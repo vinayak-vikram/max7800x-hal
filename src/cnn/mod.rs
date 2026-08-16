@@ -8,6 +8,7 @@ pub mod memory;
 pub mod network;
 pub mod regs;
 
+pub use network::{Direct, Fifo, InputMode, Layer, Network, OutputRegion, Stream, WeightRegion};
 pub use regs::{LayerReg, LayerRegs, Quadrant, Reg};
 
 use crate::gcr::clocks::{Clock, Disabled, Enabled, InternalPll, PeripheralClock};
@@ -30,6 +31,15 @@ pub enum Pipeline {
     #[default]
     Enabled,
     Disabled,
+}
+
+impl Pipeline {
+    pub const fn ctl_bits(self) -> u32 {
+        match self {
+            Self::Enabled => 0,
+            Self::Disabled => 1 << 5,
+        }
+    }
 }
 
 /// Clock source for the accelerator
@@ -227,7 +237,79 @@ impl Cnn<Disabled> {
     }
 }
 
+/// SRAM control word.
+const SRAM_CONTROL: u32 = 0x0000_040e;
+
+/// Zeroize commands
+const ZEROIZE_NO_BIAS: u32 = 0x0000_1880;
+const ZEROIZE_WITH_BIAS: u32 = 0x0000_1c80;
+
+macro_rules! each_quadrant {
+    ($self:ident, |$q:ident| $body:block) => {{
+        {
+            let $q = &$self.q0;
+            $body
+        }
+        {
+            let $q = &$self.q1;
+            $body
+        }
+        {
+            let $q = &$self.q2;
+            $body
+        }
+        {
+            let $q = &$self.q3;
+            $body
+        }
+    }};
+}
+
 impl Cnn<Enabled> {
+    /// Initialize the accelerator
+    pub fn init<M: InputMode>(&mut self, network: &Network<M>) {
+        let no_pipeline = matches!(self.pipeline, Pipeline::Disabled);
+
+        // clk_en and pipeline selection
+        each_quadrant!(self, |q| {
+            q.ctl()
+                .write(|w| w.clk_en().set_bit().no_pipeline().bit(no_pipeline));
+        });
+
+        // Ready-select 0, no quadrant powered down.
+        self.cnn.aon().write(|w| unsafe { w.bits(0) });
+
+        each_quadrant!(self, |q| {
+            q.sram().write(|w| unsafe { w.bits(SRAM_CONTROL) });
+        });
+
+        let zeroize = if network.has_bias() {
+            ZEROIZE_WITH_BIAS
+        } else {
+            ZEROIZE_NO_BIAS
+        };
+        // Start all four before polling any of them; they run concurrently.
+        each_quadrant!(self, |q| {
+            q.test().write(|w| unsafe { w.bits(zeroize) });
+        });
+        each_quadrant!(self, |q| {
+            while q.test().read().zero_done().bit_is_clear() {}
+        });
+        each_quadrant!(self, |q| {
+            q.test().write(|w| unsafe { w.bits(0) });
+        });
+
+        let stop = M::STOP_SM | self.pipeline.ctl_bits();
+        each_quadrant!(self, |q| {
+            q.ctl().write(|w| unsafe { w.bits(stop) });
+            q.lcnt().write(|w| unsafe {
+                w.last()
+                    .bits(network.last_layer)
+                    .start()
+                    .bits(network.first_layer)
+            });
+        });
+    }
     /// The accelerator clock frequency, after the divider
     pub const fn frequency(&self) -> u32 {
         match self.source {
@@ -478,5 +560,61 @@ mod tests {
     #[test]
     fn pipeline_defaults_to_enabled() {
         assert_eq!(Pipeline::default(), Pipeline::Enabled);
+    }
+
+    /// Init constants, cross-checked against the `cnn_init` of every shipped
+    /// example. `kws20_demo` has no bias and writes `0x1880`; the other seven
+    /// have bias and write `0x1c80`.
+    #[test]
+    fn init_constants_match_the_generated_sources() {
+        assert_eq!(SRAM_CONTROL, 0x0000_040e);
+        assert_eq!(ZEROIZE_NO_BIAS, 0x0000_1880);
+        assert_eq!(ZEROIZE_WITH_BIAS, 0x0000_1c80);
+        // Bias selection is the only difference between the two.
+        assert_eq!(ZEROIZE_WITH_BIAS ^ ZEROIZE_NO_BIAS, 1 << 10);
+        // Both run the zeroize, and neither runs any BIST.
+        for word in [ZEROIZE_NO_BIAS, ZEROIZE_WITH_BIAS] {
+            assert_ne!(word & (1 << 7), 0, "ZERO_RUN clear");
+            assert_eq!(word & 0b101_0101, 0, "a BIST run bit is set");
+        }
+    }
+
+    /// The generator folds `NO_PIPELINE` into the stop-SM and arm words, so it
+    /// cannot be written once and left alone.
+    #[test]
+    fn pipeline_contributes_to_every_control_word() {
+        assert_eq!(Pipeline::Enabled.ctl_bits(), 0);
+        assert_eq!(Pipeline::Disabled.ctl_bits(), 1 << 5);
+
+        // The published constants are the pipelined case.
+        for word in [
+            network::Direct::STOP_SM,
+            network::Direct::START_MASTER,
+            network::Fifo::STOP_SM,
+            network::Fifo::START_MASTER,
+        ] {
+            assert_eq!(word & (1 << 5), 0, "{word:#010x} already has NO_PIPELINE");
+        }
+
+        assert_eq!(
+            network::Direct::STOP_SM | Pipeline::Disabled.ctl_bits(),
+            0x0010_0028
+        );
+        assert_eq!(
+            network::Fifo::STOP_SM | Pipeline::Disabled.ctl_bits(),
+            0x0010_8028
+        );
+    }
+
+    /// `LCNT_MAX` takes hardware layer indices, so the last index is one less
+    /// than the layer count. Values from the shipped examples.
+    #[test]
+    fn layer_count_encoding() {
+        // kws20_demo: 9 layers, imagenet: 34, cifar-100-effnet2: 33,
+        // mobilefacenet-112: 73.
+        for (layers, expected) in [(9u32, 0x08u32), (34, 0x21), (33, 0x20), (73, 0x48)] {
+            let last = layers - 1;
+            assert_eq!(last | (0 << 8), expected, "{layers} layers");
+        }
     }
 }
