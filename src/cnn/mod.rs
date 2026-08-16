@@ -239,6 +239,15 @@ impl Cnn<Disabled> {
     }
 }
 
+/// CTL bits a completion interrupt handler must clear.
+pub const fn ack_mask(streaming: bool) -> u32 {
+    let mut mask = (1 << 12) | 1;
+    if streaming {
+        mask |= 1 << 14;
+    }
+    mask
+}
+
 /// SRAM control word.
 const SRAM_CONTROL: u32 = 0x0000_040e;
 
@@ -333,6 +342,68 @@ impl Cnn<Enabled> {
         for (quadrant, data) in tables.iter().enumerate() {
             memory::write_bias(quadrant as u8, data);
         }
+    }
+
+    /// Start inference.
+    pub fn start<M: InputMode>(&mut self, network: &Network<M>) {
+        debug_assert!(
+            !network.is_streaming() || M::FIFO,
+            "a streaming network requires FIFO input"
+        );
+
+        let pipeline = self.pipeline.ctl_bits();
+        self.q0
+            .ctl()
+            .write(|w| unsafe { w.bits(M::START_MASTER | pipeline) });
+        self.q1
+            .ctl()
+            .write(|w| unsafe { w.bits(M::START_OTHER | pipeline) });
+        self.q2
+            .ctl()
+            .write(|w| unsafe { w.bits(M::START_OTHER | pipeline) });
+        self.q3
+            .ctl()
+            .write(|w| unsafe { w.bits(M::START_OTHER | pipeline) });
+
+        self.q0
+            .ctl()
+            .write(|w| unsafe { w.bits(M::START_GO | pipeline) });
+    }
+
+    /// Whether the accelerator has signalled completion.
+    pub fn is_complete(&self) -> bool {
+        self.q0.ctl().read().irq().bit_is_set()
+    }
+
+    pub fn wait(&self) {
+        while !self.is_complete() {}
+    }
+
+    /// Acknowledge the completion interrupt on every quadrant.
+    pub fn acknowledge<M: InputMode>(&mut self, network: &Network<M>) {
+        let mask = ack_mask(network.is_streaming());
+        self.q0
+            .ctl()
+            .modify(|r, w| unsafe { w.bits(r.bits() & !mask) });
+        self.q1
+            .ctl()
+            .modify(|r, w| unsafe { w.bits(r.bits() & !mask) });
+        self.q2
+            .ctl()
+            .modify(|r, w| unsafe { w.bits(r.bits() & !mask) });
+        self.q3
+            .ctl()
+            .modify(|r, w| unsafe { w.bits(r.bits() & !mask) });
+    }
+
+    /// Halt the master quadrant, pausing the network where it stands.
+    pub fn stop(&mut self) {
+        self.q0.ctl().modify(|_, w| w.en().clear_bit());
+    }
+
+    /// Release the master quadrant again after [`stop`](Cnn::stop).
+    pub fn resume(&mut self) {
+        self.q0.ctl().modify(|_, w| w.en().set_bit());
     }
 
     /// The accelerator clock frequency, after the divider
@@ -629,6 +700,54 @@ mod tests {
             network::Fifo::STOP_SM | Pipeline::Disabled.ctl_bits(),
             0x0010_8028
         );
+    }
+
+    /// The arm-and-go sequence, cross-checked against `cnn_start`.
+    #[test]
+    fn start_sequence_matches_the_generated_sources() {
+        let p = Pipeline::Enabled.ctl_bits();
+
+        // kws20_demo, direct input.
+        assert_eq!(network::Direct::START_MASTER | p, 0x0010_0808);
+        assert_eq!(network::Direct::START_OTHER | p, 0x0010_0809);
+        assert_eq!(network::Direct::START_GO | p, 0x0010_0009);
+
+        // mobilefacenet-112, FIFO input.
+        assert_eq!(network::Fifo::START_MASTER | p, 0x0018_c808);
+        assert_eq!(network::Fifo::START_OTHER | p, 0x0018_c809);
+        assert_eq!(network::Fifo::START_GO | p, 0x0018_c809);
+    }
+
+    /// Disabling the pipeline changes every word in the start sequence, not
+    /// just the one written at init.
+    #[test]
+    fn start_sequence_carries_the_pipeline_bit() {
+        let p = Pipeline::Disabled.ctl_bits();
+        assert_eq!(network::Direct::START_MASTER | p, 0x0010_0828);
+        assert_eq!(network::Direct::START_GO | p, 0x0010_0029);
+        assert_eq!(network::Fifo::START_OTHER | p, 0x0018_c829);
+    }
+
+    /// The two acknowledge masks the generator emits. A third form exists for
+    /// one-shot mode, which this HAL does not expose.
+    #[test]
+    fn acknowledge_masks_match_the_generated_isr() {
+        // kws20_demo: `&= ~((1 << 12) | 1)`
+        assert_eq!(ack_mask(false), (1 << 12) | 1);
+        // mobilefacenet-112: `&= ~((1 << 12) | (1 << 14) | 1)`
+        assert_eq!(ack_mask(true), (1 << 12) | (1 << 14) | 1);
+        // Clearing DONE is what makes the next completion detectable.
+        assert_ne!(ack_mask(false) & (1 << 12), 0);
+        assert_ne!(ack_mask(true) & (1 << 12), 0);
+    }
+
+    /// `stop` and `resume` toggle the same bit the go word sets, so a stopped
+    /// network resumes exactly where the go left it.
+    #[test]
+    fn stop_and_resume_toggle_the_enable_bit() {
+        assert_eq!(network::Direct::START_GO & 1, 1);
+        assert_eq!(network::Fifo::START_GO & 1, 1);
+        assert_ne!(ack_mask(false) & 1, 0, "the ISR also clears CNN_EN");
     }
 
     /// `LCNT_MAX` takes hardware layer indices, so the last index is one less
