@@ -415,6 +415,210 @@ impl core::fmt::Debug for Ena {
     }
 }
 
+/// Post processing.
+register! {
+    Post
+}
+
+impl Post {
+    field!(bias_addr, with_bias_addr, 0, 12);
+    flag!(bias_en, with_bias_en, 12);
+    field!(scale_mag, with_scale_mag, 13, 4);
+    flag!(scale_dir, with_scale_dir, 17);
+    field!(xpmp_cnt, with_xpmp_cnt, 18, 4);
+    field!(wscale, with_wscale, 22, 2);
+    flag!(ts_ena, with_ts_ena, 24);
+    flag!(onexone_ena, with_onexone_ena, 25);
+    flag!(act_abs, with_act_abs, 26);
+    flag!(flatten_ena, with_flatten_ena, 27);
+    flag!(xpose_ena, with_xpose_ena, 28);
+    flag!(calcx4, with_calcx4, 29);
+    flag!(dw_ena, with_dw_ena, 30);
+    flag!(tcalc, with_tcalc, 31);
+
+    #[inline]
+    pub const fn shift_dir(self) -> ShiftDir {
+        if self.scale_dir() {
+            ShiftDir::Right
+        } else {
+            ShiftDir::Left
+        }
+    }
+
+    #[inline]
+    pub const fn with_shift_dir(self, dir: ShiftDir) -> Self {
+        self.with_scale_dir(matches!(dir, ShiftDir::Right))
+    }
+
+    /// Weight-width compensation.
+    #[inline]
+    pub const fn weight_scale(self) -> WeightScale {
+        WeightScale::from_code(self.wscale())
+    }
+
+    #[inline]
+    pub const fn with_weight_scale(self, scale: WeightScale) -> Self {
+        self.with_wscale(scale as u32)
+    }
+    #[inline]
+    pub const fn output_shift(self) -> i32 {
+        let mag = self.scale_mag() as i32;
+        if self.scale_dir() {
+            -mag
+        } else {
+            mag
+        }
+    }
+    #[inline]
+    pub const fn with_output_shift(self, shift: i32) -> Self {
+        if shift < 0 {
+            self.with_scale_mag((-shift) as u32).with_scale_dir(true)
+        } else {
+            self.with_scale_mag(shift as u32).with_scale_dir(false)
+        }
+    }
+}
+
+impl core::fmt::Debug for Post {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Post")
+            .field("bias_addr", &self.bias_addr())
+            .field("bias_en", &self.bias_en())
+            .field("output_shift", &self.output_shift())
+            .field("xpmp_cnt", &self.xpmp_cnt())
+            .field("weight_scale", &self.weight_scale())
+            .field("ts_ena", &self.ts_ena())
+            .field("onexone_ena", &self.onexone_ena())
+            .field("act_abs", &self.act_abs())
+            .field("flatten_ena", &self.flatten_ena())
+            .field("xpose_ena", &self.xpose_ena())
+            .field("calcx4", &self.calcx4())
+            .field("dw_ena", &self.dw_ena())
+            .field("tcalc", &self.tcalc())
+            .finish()
+    }
+}
+
+/// Pooling mode, `LCTL.maxpool`
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PoolMode {
+    Avg,
+    Max,
+}
+
+impl Lctl {
+    #[inline]
+    pub const fn pool_mode(self) -> PoolMode {
+        if self.maxpool() {
+            PoolMode::Max
+        } else {
+            PoolMode::Avg
+        }
+    }
+
+    #[inline]
+    pub const fn with_pool_mode(self, mode: PoolMode) -> Self {
+        self.with_maxpool(matches!(mode, PoolMode::Max))
+    }
+}
+
+/// Element-wise function, `ONED.elt_fn`
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(u32)]
+pub enum EltwiseFn {
+    Sub = 0b00,
+    Add = 0b01,
+    Or = 0b10,
+    Xor = 0b11,
+}
+
+impl EltwiseFn {
+    #[inline]
+    pub const fn from_code(code: u32) -> Self {
+        match code & 0b11 {
+            0b00 => Self::Sub,
+            0b01 => Self::Add,
+            0b10 => Self::Or,
+            _ => Self::Xor,
+        }
+    }
+}
+
+impl Oned {
+    #[inline]
+    pub const fn eltwise_fn(self) -> EltwiseFn {
+        EltwiseFn::from_code(self.elt_fn())
+    }
+
+    #[inline]
+    pub const fn with_eltwise_fn(self, f: EltwiseFn) -> Self {
+        self.with_elt_fn(f as u32)
+    }
+}
+
+/// Weight-width compensation, `POST.wscale`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(u32)]
+pub enum WeightScale {
+    /// Eight-bit weights, or a bypass layer. No compensation.
+    Bits8 = 0,
+    /// One-bit weights, including binary.
+    Bits1 = 1,
+    Bits2 = 2,
+    Bits4 = 3,
+}
+
+impl WeightScale {
+    #[inline]
+    pub const fn from_code(code: u32) -> Self {
+        match code & 0b11 {
+            0 => Self::Bits8,
+            1 => Self::Bits1,
+            2 => Self::Bits2,
+            _ => Self::Bits4,
+        }
+    }
+}
+
+/// Output shift direction, `POST.scale_dir`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(u32)]
+pub enum ShiftDir {
+    Left = 0,
+    Right = 1,
+}
+
+/// Activation, which the hardware splits across two registers: ReLU is
+/// `LCTL.relu` and absolute value is `POST.act_abs`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Activation {
+    None,
+    Relu,
+    Abs,
+}
+
+impl Activation {
+    /// Read the activation out of the two registers that carry it.
+    #[inline]
+    pub const fn decode(lctl: Lctl, post: Post) -> Option<Self> {
+        match (lctl.relu(), post.act_abs()) {
+            (false, false) => Some(Self::None),
+            (true, false) => Some(Self::Relu),
+            (false, true) => Some(Self::Abs),
+            (true, true) => None, //should never happen, UB basically
+        }
+    }
+
+    /// Write the activation into both registers, clearing the other bit.
+    #[inline]
+    pub const fn apply(self, lctl: Lctl, post: Post) -> (Lctl, Post) {
+        (
+            lctl.with_relu(matches!(self, Self::Relu)),
+            post.with_act_abs(matches!(self, Self::Abs)),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -913,5 +1117,174 @@ mod tests {
         let pooled = Oned::from_bits(0x0005_6003);
         assert!(pooled.pool_first());
         assert_eq!(pooled.bits(), o.with_pool_first(true).bits());
+    }
+
+    const POSTS: [u32; 16] = [
+        0x0000_1000,
+        0x0000_113e,
+        0x0000_15b0,
+        0x0000_2000,
+        0x0000_3100,
+        0x0000_5430,
+        0x0000_73f0,
+        0x0000_8000,
+        0x0002_2000,
+        0x0002_34c4,
+        0x0002_5000,
+        0x0002_73b0,
+        0x0100_0000,
+        0x0300_0000,
+        0x1000_1200,
+        0x4100_d004,
+    ];
+
+    #[test]
+    fn post_roundtrips() {
+        for bits in POSTS {
+            let p = Post::from_bits(bits);
+            let rebuilt = Post::new()
+                .with_bias_addr(p.bias_addr())
+                .with_bias_en(p.bias_en())
+                .with_scale_mag(p.scale_mag())
+                .with_scale_dir(p.scale_dir())
+                .with_xpmp_cnt(p.xpmp_cnt())
+                .with_wscale(p.wscale())
+                .with_ts_ena(p.ts_ena())
+                .with_onexone_ena(p.onexone_ena())
+                .with_act_abs(p.act_abs())
+                .with_flatten_ena(p.flatten_ena())
+                .with_xpose_ena(p.xpose_ena())
+                .with_calcx4(p.calcx4())
+                .with_dw_ena(p.dw_ena())
+                .with_tcalc(p.tcalc());
+            assert_eq!(rebuilt.bits(), bits, "Post {bits:#010x}");
+        }
+    }
+
+    /// The field the plan singles out as most error-prone: five bits of signed
+    /// magnitude, not two's complement.
+    #[test]
+    fn output_shift_is_signed_magnitude() {
+        // The worked example from the specification.
+        let p = Post::new().with_output_shift(-3);
+        assert_eq!(p.scale_mag(), 3);
+        assert!(p.scale_dir());
+        assert_eq!(p.bits() >> 13, 0b1_0011);
+        assert_ne!(p.bits() >> 13, 0b1_1101, "encoded as two's complement");
+        assert_eq!(p.output_shift(), -3);
+
+        for shift in -15..=15 {
+            let p = Post::new().with_output_shift(shift);
+            assert_eq!(p.output_shift(), shift, "shift {shift}");
+        }
+
+        // Every scale actually shipped, decoded from the golden words.
+        assert_eq!(Post::from_bits(0x0000_8000).output_shift(), 4);
+        assert_eq!(Post::from_bits(0x0000_73f0).output_shift(), 3);
+        assert_eq!(Post::from_bits(0x0002_2000).output_shift(), -1);
+        assert_eq!(Post::from_bits(0x0002_5000).output_shift(), -2);
+        assert_eq!(Post::from_bits(0x0002_73b0).output_shift(), -3);
+        assert_eq!(Post::from_bits(0x4100_d004).output_shift(), 6);
+    }
+
+    #[test]
+    fn shift_direction_matches_the_raw_bit() {
+        assert_eq!(Post::new().with_output_shift(2).shift_dir(), ShiftDir::Left);
+        assert_eq!(
+            Post::new().with_output_shift(-2).shift_dir(),
+            ShiftDir::Right
+        );
+        assert!(Post::new().with_shift_dir(ShiftDir::Right).scale_dir());
+    }
+
+    /// cifar-100-effnet2 layer 15: depthwise, so `dw_ena` and `ts_ena` are
+    /// written together.
+    #[test]
+    fn effnet2_layer15_post() {
+        let p = Post::from_bits(0x4100_3000);
+        assert!(p.dw_ena());
+        assert!(p.ts_ena(), "dw_ena is always written with ts_ena");
+        assert!(p.bias_en());
+        assert_eq!(p.bias_addr(), 0);
+        assert_eq!(p.output_shift(), 1);
+        assert_eq!(p.weight_scale(), WeightScale::Bits8);
+    }
+
+    /// The inserted average-pool reset layer writes `POST = 0x0300_0000`.
+    #[test]
+    fn inserted_passthrough_layer_post() {
+        let p = Post::from_bits(0x0300_0000);
+        assert!(p.ts_ena());
+        assert!(p.onexone_ena());
+        assert!(!p.bias_en());
+        assert_eq!(p.output_shift(), 0, "passthrough must not shift");
+    }
+
+    #[test]
+    fn weight_scale_codes_match_the_generator() {
+        assert_eq!(WeightScale::from_code(0), WeightScale::Bits8);
+        assert_eq!(WeightScale::from_code(1), WeightScale::Bits1);
+        assert_eq!(WeightScale::from_code(2), WeightScale::Bits2);
+        assert_eq!(WeightScale::from_code(3), WeightScale::Bits4);
+        for s in [
+            WeightScale::Bits8,
+            WeightScale::Bits1,
+            WeightScale::Bits2,
+            WeightScale::Bits4,
+        ] {
+            assert_eq!(Post::new().with_weight_scale(s).weight_scale(), s);
+        }
+        // Every shipped network uses 8-bit weights.
+        for bits in POSTS {
+            assert_eq!(Post::from_bits(bits).weight_scale(), WeightScale::Bits8);
+        }
+    }
+
+    #[test]
+    fn eltwise_codes_match_the_generator() {
+        assert_eq!(EltwiseFn::from_code(0b00), EltwiseFn::Sub);
+        assert_eq!(EltwiseFn::from_code(0b01), EltwiseFn::Add);
+        assert_eq!(EltwiseFn::from_code(0b10), EltwiseFn::Or);
+        assert_eq!(EltwiseFn::from_code(0b11), EltwiseFn::Xor);
+        // The shipped element-wise layers are adds.
+        assert_eq!(Oned::from_bits(0x0004_6003).eltwise_fn(), EltwiseFn::Add);
+        for f in [
+            EltwiseFn::Sub,
+            EltwiseFn::Add,
+            EltwiseFn::Or,
+            EltwiseFn::Xor,
+        ] {
+            assert_eq!(Oned::new().with_eltwise_fn(f).eltwise_fn(), f);
+        }
+    }
+
+    #[test]
+    fn pool_mode_follows_maxpool() {
+        assert_eq!(Lctl::from_bits(0x920).pool_mode(), PoolMode::Max);
+        assert_eq!(Lctl::new().pool_mode(), PoolMode::Avg);
+        assert!(Lctl::new().with_pool_mode(PoolMode::Max).maxpool());
+    }
+
+    /// Activation spans two registers, so it round-trips through both.
+    #[test]
+    fn activation_spans_lctl_and_post() {
+        let lctl = Lctl::from_bits(0x0000_eb20);
+        let post = Post::from_bits(0x0000_2000);
+        assert_eq!(Activation::decode(lctl, post), Some(Activation::Relu));
+
+        for act in [Activation::None, Activation::Relu, Activation::Abs] {
+            let (l, p) = act.apply(Lctl::new(), Post::new());
+            assert_eq!(Activation::decode(l, p), Some(act));
+        }
+
+        // Abs lives in POST, not LCTL.
+        let (l, p) = Activation::Abs.apply(Lctl::new(), Post::new());
+        assert!(!l.relu());
+        assert!(p.act_abs());
+
+        // Both bits set is not a valid encoding.
+        let both = Lctl::new().with_relu(true);
+        let abs = Post::new().with_act_abs(true);
+        assert_eq!(Activation::decode(both, abs), None);
     }
 }
