@@ -102,7 +102,7 @@ dependencies = [
 [[package]]
 name = "max78002-pac"
 version = "0.2.0"
-source = "git+https://github.com/vinayak-vikram/max78002-pac.git?branch=main#de75ebd727db7e0efd08644284f2df5ed57c5c68"
+source = "git+https://github.com/vinayak-vikram/max78002-pac.git?branch=main#4a0e4560897897adf0467b6df4b69c5f35fae3b2"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
