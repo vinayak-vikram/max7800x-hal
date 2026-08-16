@@ -20,6 +20,8 @@ mod private {
 }
 use private::Sealed;
 
+#[cfg(feature = "max78002")]
+pub mod cnn;
 pub mod flc;
 pub mod gcr;
 pub mod gpio;
