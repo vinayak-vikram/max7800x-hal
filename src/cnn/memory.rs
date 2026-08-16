@@ -81,6 +81,27 @@ pub unsafe fn arm_kernel_ptr(addr: u32) {
     ((addr | 1) as *mut u8).write_volatile(0x01);
 }
 
+/// Whether `entries` bias values fit in one quadrant's bias memory.
+#[inline]
+pub const fn bias_fits(entries: usize) -> bool {
+    entries as u64 <= BIAS_ENTRIES as u64
+}
+
+/// Write bias values into a quadrant's bias memory.
+pub fn write_bias(quadrant: u8, data: &[u8]) {
+    assert!(
+        bias_fits(data.len()),
+        "{} bias entries exceed the {} the quadrant holds",
+        data.len(),
+        BIAS_ENTRIES
+    );
+    let base = bias_addr(quadrant) as *mut u32;
+    for (i, value) in data.iter().enumerate() {
+        // SAFETY: bounded above, inside a quadrant the caller owns.
+        unsafe { base.add(i).write_volatile(*value as u32) };
+    }
+}
+
 /// Copy words into a data SRAM instance
 /// Panics if the access would leave the instance's address window.
 pub fn write_data(quadrant: u8, instance: u8, word_offset: u32, src: &[u32]) {
@@ -250,6 +271,35 @@ mod tests {
         assert!(kernel_burst_fits(0x5b7c - 4611 * 4, 4611));
         // Roughly a fifth of the window is in use at worst.
         assert!(0x5b7c * 5 < KERNEL_WINDOW_BYTES);
+    }
+
+    /// Bias sizes differ per quadrant. These are every size the shipped
+    /// networks use; `mobilefacenet-112` has the largest at 1840.
+    #[test]
+    fn bound_admits_every_shipped_bias_table() {
+        for entries in [
+            256, 229, 224, // kinetics
+            856, 832, 894, // pascalvoc-retinanetv7_3
+            1392, 1296, 1268, 1280, // cifar-100-effnet2
+            1384, 1376, // imagenet
+            1632, 1628, 1620, // cifar-100-mobilenet-v2-0.75
+            1840, 1776, // mobilefacenet-112
+        ] {
+            assert!(bias_fits(entries), "{entries} entries rejected");
+        }
+        assert!(bias_fits(BIAS_ENTRIES as usize));
+        assert!(!bias_fits(BIAS_ENTRIES as usize + 1));
+    }
+
+    /// Each entry takes a whole word, so the region is four times the entry
+    /// count in bytes and `POST.bias_addr` can reach all of it.
+    #[test]
+    fn bias_region_is_one_word_per_entry() {
+        assert_eq!(bias_addr(0) + BIAS_ENTRIES * 4, bias_addr(0) + 8192);
+        // POST.bias_addr is 12 bits, so it addresses more words than exist.
+        assert!(BIAS_ENTRIES <= 1 << 12);
+        // The region fits between the bias base and the TRAM.
+        assert!(bias_addr(0) + BIAS_ENTRIES * 4 <= tram_addr(0, 0));
     }
 
     #[test]

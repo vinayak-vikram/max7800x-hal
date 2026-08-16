@@ -325,6 +325,16 @@ impl Cnn<Enabled> {
         }
     }
 
+    /// Load a network's bias values, if it has any.
+    pub fn load_bias<M: InputMode>(&mut self, network: &Network<M>) {
+        let Some(tables) = network.bias else {
+            return;
+        };
+        for (quadrant, data) in tables.iter().enumerate() {
+            memory::write_bias(quadrant as u8, data);
+        }
+    }
+
     /// The accelerator clock frequency, after the divider
     pub const fn frequency(&self) -> u32 {
         match self.source {
