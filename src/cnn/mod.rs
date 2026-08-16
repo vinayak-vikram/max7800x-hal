@@ -3,11 +3,13 @@
 //! The datasheet is gee.
 //!
 
+pub mod config;
 pub mod fields;
 pub mod memory;
 pub mod network;
 pub mod regs;
 
+pub use config::{emit_layer, LayerSink, MASTER_QUADRANT};
 pub use network::{Direct, Fifo, InputMode, Layer, Network, OutputRegion, Stream, WeightRegion};
 pub use regs::{LayerReg, LayerRegs, Quadrant, Reg};
 

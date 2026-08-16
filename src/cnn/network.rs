@@ -79,6 +79,8 @@ pub struct Layer {
     pub ena: [Ena; QUADRANTS as usize],
 
     pub stream: Option<Stream>,
+    /// program into master quadrant only?
+    pub master_only: bool,
 }
 
 impl Layer {
@@ -268,6 +270,7 @@ mod tests {
             wptr: [WptrBase::from_bits(0x2000); 4],
             ena: [Ena::from_bits(1), Ena::new(), Ena::new(), Ena::new()],
             stream: None,
+            master_only: true,
         }
     }
 
