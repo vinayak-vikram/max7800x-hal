@@ -1354,4 +1354,137 @@ mod tests {
         let abs = Post::new().with_act_abs(true);
         assert_eq!(Activation::decode(both, abs), None);
     }
+
+    fn assert_reg<R: LayerRegister>(expected: LayerReg, bits: u32) {
+        assert_eq!(R::REG, expected);
+        assert_eq!(<R as LayerRegister>::from_bits(bits).bits(), bits);
+    }
+
+    /// Pins the value-type to register-slot mapping one type at a time. The
+    /// table in `layer_registers!` is the only place it is written down, so a
+    /// swapped pair there would otherwise go unnoticed.
+    #[test]
+    fn every_type_maps_to_its_own_slot() {
+        assert_reg::<Nxtlyr>(LayerReg::Next, 0x87);
+        assert_reg::<Rcnt>(LayerReg::Rows, 0x0002_007f);
+        assert_reg::<Ccnt>(LayerReg::Cols, 0x0001_0000);
+        assert_reg::<Oned>(LayerReg::Oned, 0x0000_1100);
+        assert_reg::<Prcnt>(LayerReg::PoolRows, 0x1);
+        assert_reg::<Pccnt>(LayerReg::PoolCols, 0x1);
+        assert_reg::<Stride>(LayerReg::Stride, 0x20);
+        assert_reg::<WptrBase>(LayerReg::Wptr, 0x800);
+        assert_reg::<WptrToffs>(LayerReg::WptrTs, 0x1);
+        assert_reg::<WptrMoffs>(LayerReg::WptrMask, 0x8000);
+        assert_reg::<WptrChoffs>(LayerReg::WptrMp, 0x1);
+        assert_reg::<RptrBase>(LayerReg::Rptr, 0x2000);
+        assert_reg::<Lctl>(LayerReg::Lctl, 0x0000_eb20);
+        assert_reg::<Lctl2>(LayerReg::Lctl2, 0x0019_8011);
+        assert_reg::<Mcnt1>(LayerReg::Mcnt, 0x678);
+        assert_reg::<Mcnt2>(LayerReg::Moffs, 0x1200);
+        assert_reg::<Ochan>(LayerReg::Ochan, 0xcf);
+        assert_reg::<Tptr>(LayerReg::Tptr, 0x0140_027f);
+        assert_reg::<Ena>(LayerReg::En, 0xffff_ffff);
+        assert_reg::<Post>(LayerReg::Post, 0x0000_3000);
+    }
+
+    #[test]
+    fn typed_registers_cover_every_slot_once() {
+        assert_eq!(ALL_TYPED_REGS.len(), crate::cnn::regs::ALL_LAYER_REGS.len());
+        for expected in crate::cnn::regs::ALL_LAYER_REGS {
+            let count = ALL_TYPED_REGS.iter().filter(|r| **r == expected).count();
+            assert_eq!(count, 1, "{expected:?} has {count} value types");
+        }
+    }
+
+    /// The emit order is a property of the network, not of this table, but
+    /// keeping the table in emit order makes a generic emit trivial.
+    #[test]
+    fn typed_registers_are_in_emit_order() {
+        assert_eq!(ALL_TYPED_REGS, super::super::EMIT_ORDER);
+    }
+
+    /// A `core::fmt` sink, so the decoder can be checked without `std`.
+    struct Buf {
+        data: [u8; 512],
+        len: usize,
+    }
+
+    impl Buf {
+        const fn new() -> Self {
+            Self {
+                data: [0; 512],
+                len: 0,
+            }
+        }
+
+        fn as_str(&self) -> &str {
+            core::str::from_utf8(&self.data[..self.len]).unwrap()
+        }
+    }
+
+    impl core::fmt::Write for Buf {
+        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+            let bytes = s.as_bytes();
+            let n = bytes.len().min(self.data.len() - self.len);
+            self.data[self.len..self.len + n].copy_from_slice(&bytes[..n]);
+            self.len += n;
+            Ok(())
+        }
+    }
+
+    fn rendered(reg: LayerReg, bits: u32) -> Buf {
+        use core::fmt::Write;
+        let mut buf = Buf::new();
+        with_decoded(reg, bits, |v| write!(buf, "{v:?}").unwrap());
+        buf
+    }
+
+    #[test]
+    fn decoder_visits_every_register() {
+        let mut visited = 0;
+        for reg in crate::cnn::regs::ALL_LAYER_REGS {
+            with_decoded(reg, 0, |_| visited += 1);
+        }
+        assert_eq!(visited, 20);
+    }
+
+    /// The decoder must produce the register's own type, not a same-shaped
+    /// neighbour. `Rcnt` and `Ccnt` have identical layouts, so only the name
+    /// distinguishes them.
+    #[test]
+    fn decoder_names_the_right_type() {
+        assert!(rendered(LayerReg::Rows, 0x0002_007f)
+            .as_str()
+            .starts_with("Rcnt"));
+        assert!(rendered(LayerReg::Cols, 0x0001_0000)
+            .as_str()
+            .starts_with("Ccnt"));
+        assert!(rendered(LayerReg::PoolRows, 1)
+            .as_str()
+            .starts_with("Prcnt"));
+        assert!(rendered(LayerReg::PoolCols, 1)
+            .as_str()
+            .starts_with("Pccnt"));
+        assert!(rendered(LayerReg::Mcnt, 0x678)
+            .as_str()
+            .starts_with("Mcnt1"));
+        assert!(rendered(LayerReg::Moffs, 0x1200)
+            .as_str()
+            .starts_with("Mcnt2"));
+        assert!(rendered(LayerReg::En, 0xffff_ffff)
+            .as_str()
+            .starts_with("Ena"));
+    }
+
+    /// The payoff the plan is after: a dumped word reads as fields, not hex.
+    #[test]
+    fn decoder_output_is_decoded_not_hex() {
+        let post = rendered(LayerReg::Post, 0x0002_73b0);
+        let text = post.as_str();
+        assert!(text.contains("output_shift: -3"), "{text}");
+        assert!(text.contains("bias_en: true"), "{text}");
+
+        let lctl = rendered(LayerReg::Lctl, 0x0000_eb20);
+        assert!(lctl.as_str().contains("relu: true"), "{}", lctl.as_str());
+    }
 }
