@@ -39,6 +39,11 @@ pub struct InternalBaudRateOscillator;
 pub struct ExternalRtcOscillator;
 // pub struct ExternalClockOscillator;
 
+#[cfg(feature = "max78002")]
+impl InternalPll {
+    pub const CNN_FREQUENCY: u32 = 200_000_000; // 200 MHz
+}
+
 impl crate::Sealed for InternalPrimaryOscillator {}
 impl crate::Sealed for InternalSecondaryOscillator {}
 #[cfg(feature = "max78002")]
