@@ -98,6 +98,37 @@ pub fn write_data(quadrant: u8, instance: u8, word_offset: u32, src: &[u32]) {
     }
 }
 
+/// Address space of one processor's kernel memory window.
+pub const KERNEL_WINDOW_BYTES: u32 = MEMORY_STRIDE;
+
+#[inline]
+pub const fn kernel_burst_fits(offset: u32, words: usize) -> bool {
+    (offset as u64) + (words as u64) * 4 <= KERNEL_WINDOW_BYTES as u64
+}
+
+/// Push a burst of packed kernel words into a processor's kernel memory.
+pub fn write_kernel(quadrant: u8, processor: u8, offset: u32, data: &[u32]) {
+    assert!(
+        offset.is_multiple_of(4),
+        "kernel burst offset {offset:#x} is not word-aligned"
+    );
+    assert!(
+        kernel_burst_fits(offset, data.len()),
+        "kernel burst of {} words at offset {:#x} leaves the {} byte window",
+        data.len(),
+        offset,
+        KERNEL_WINDOW_BYTES
+    );
+
+    let base = kernel_addr(quadrant, processor) + offset;
+    // SAFETY: the address is inside a kernel window of a quadrant the caller
+    // owns, and the burst has been bounds-checked above.
+    unsafe { arm_kernel_ptr(base) };
+    for (i, word) in data.iter().enumerate() {
+        unsafe { ((base + (i as u32) * 4) as *mut u32).write_volatile(*word) };
+    }
+}
+
 /// Copy words out of a data SRAM instance
 /// Panics if the access would leave the instance's address window
 pub fn read_data(quadrant: u8, instance: u8, word_offset: u32, dst: &mut [u32]) {
@@ -192,5 +223,45 @@ mod tests {
     fn bound_admits_the_largest_shipped_input_load() {
         assert!(12544 * 4 <= DATA_WINDOW_BYTES);
         assert!(12544 > DATA_INSTANCE_WORDS);
+    }
+
+    /// Record addresses taken from the `KERNELS` blobs in `weights.h`. Each
+    /// record is `(address, length, data...)`, and the address decomposes into
+    /// a quadrant, a processor and a byte offset.
+    #[test]
+    fn kernel_burst_addresses_match_the_weight_blobs() {
+        // kws20_demo, the first five records of processor 0.
+        assert_eq!(kernel_addr(0, 0) + 0x000, 0x5140_0000);
+        assert_eq!(kernel_addr(0, 0) + 0x210, 0x5140_0210);
+        assert_eq!(kernel_addr(0, 0) + 0x2b0, 0x5140_02b0);
+        assert_eq!(kernel_addr(0, 0) + 0x450, 0x5140_0450);
+        assert_eq!(kernel_addr(0, 0) + 0x500, 0x5140_0500);
+        // The next processor starts a fresh window.
+        assert_eq!(kernel_addr(0, 1) + 0x000, 0x5142_0000);
+        assert_eq!(kernel_addr(0, 1) + 0x210, 0x5142_0210);
+    }
+
+    /// The window is far larger than any shipped network needs, so the bound
+    /// is generous by design. `pascalvoc-retinanetv7_3` has the longest single
+    /// burst at 5686 words; `imagenet-riscv` reaches the highest end offset.
+    #[test]
+    fn bound_admits_the_largest_shipped_weight_bursts() {
+        assert!(kernel_burst_fits(0, 5686));
+        assert!(kernel_burst_fits(0x5b7c - 4611 * 4, 4611));
+        // Roughly a fifth of the window is in use at worst.
+        assert!(0x5b7c * 5 < KERNEL_WINDOW_BYTES);
+    }
+
+    #[test]
+    fn bound_rejects_bursts_that_leave_the_window() {
+        assert!(kernel_burst_fits(0, (KERNEL_WINDOW_BYTES / 4) as usize));
+        assert!(!kernel_burst_fits(
+            0,
+            (KERNEL_WINDOW_BYTES / 4) as usize + 1
+        ));
+        assert!(!kernel_burst_fits(KERNEL_WINDOW_BYTES, 1));
+        assert!(kernel_burst_fits(KERNEL_WINDOW_BYTES - 4, 1));
+        // The arithmetic must not wrap.
+        assert!(!kernel_burst_fits(u32::MAX, 1));
     }
 }

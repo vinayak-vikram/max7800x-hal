@@ -312,6 +312,19 @@ impl Cnn<Enabled> {
             });
         });
     }
+
+    /// Load a network's weights into kernel memory.
+    pub fn load_weights<M: InputMode>(&mut self, network: &Network<M>) {
+        for region in network.weights {
+            memory::write_kernel(
+                region.quadrant,
+                region.processor,
+                region.offset,
+                region.data,
+            );
+        }
+    }
+
     /// The accelerator clock frequency, after the divider
     pub const fn frequency(&self) -> u32 {
         match self.source {
