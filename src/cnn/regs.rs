@@ -2,6 +2,8 @@
 //!
 //! All addresses are derived from the PAC base
 
+use super::fields::{with_decoded, LayerRegister, ALL_TYPED_REGS};
+
 pub const QUADRANTS: u8 = 4;
 pub const PROCESSORS_PER_QUADRANT: u8 = 16;
 pub const DATA_INSTANCES_PER_QUADRANT: u8 = 4;
@@ -199,6 +201,23 @@ impl LayerRegs {
     #[inline]
     pub const fn reg(self, r: LayerReg) -> Reg {
         Reg(self.addr + r as u32)
+    }
+    #[inline]
+    pub fn read_typed<R: LayerRegister>(self) -> R {
+        R::from_bits(self.reg(R::REG).read())
+    }
+    #[inline]
+    pub fn write_typed<R: LayerRegister>(self, value: R) {
+        self.reg(R::REG).write(value.bits())
+    }
+
+    /// Decode all registers
+    #[inline]
+    pub fn dump(self, mut visit: impl FnMut(LayerReg, &dyn core::fmt::Debug)) {
+        for reg in ALL_TYPED_REGS {
+            let bits = self.reg(reg).read();
+            with_decoded(reg, bits, |value| visit(reg, value));
+        }
     }
     #[inline]
     pub const fn next(self) -> Reg {

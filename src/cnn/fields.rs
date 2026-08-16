@@ -1,6 +1,8 @@
 //! # CNN Layer Register Values
 //!
 
+use super::regs::LayerReg;
+
 macro_rules! register {
     ($(#[$attr:meta])* $name:ident) => {
         $(#[$attr])*
@@ -617,6 +619,71 @@ impl Activation {
             post.with_act_abs(matches!(self, Self::Abs)),
         )
     }
+}
+
+/// its beautiful 🥹
+pub trait LayerRegister: Copy + core::fmt::Debug {
+    const REG: LayerReg;
+
+    fn from_bits(bits: u32) -> Self;
+    fn bits(self) -> u32;
+}
+
+macro_rules! layer_registers {
+    ($($ty:ident => $reg:ident),* $(,)?) => {
+        $(
+            impl LayerRegister for $ty {
+                const REG: LayerReg = LayerReg::$reg;
+
+                #[inline]
+                fn from_bits(bits: u32) -> Self {
+                    Self(bits)
+                }
+
+                #[inline]
+                fn bits(self) -> u32 {
+                    self.0
+                }
+            }
+        )*
+
+        /// Every register that has a value type, in emit order.
+        pub const ALL_TYPED_REGS: [LayerReg; 20] = [$(LayerReg::$reg),*];
+
+        // for debugging
+        pub fn with_decoded<T>(
+            reg: LayerReg,
+            bits: u32,
+            f: impl FnOnce(&dyn core::fmt::Debug) -> T,
+        ) -> T {
+            match reg {
+                $(LayerReg::$reg => f(&$ty(bits))),*
+            }
+        }
+    };
+}
+
+layer_registers! {
+    Nxtlyr => Next,
+    Rcnt => Rows,
+    Ccnt => Cols,
+    Prcnt => PoolRows,
+    Pccnt => PoolCols,
+    Stride => Stride,
+    WptrBase => Wptr,
+    WptrToffs => WptrTs,
+    WptrMoffs => WptrMask,
+    WptrChoffs => WptrMp,
+    RptrBase => Rptr,
+    Lctl => Lctl,
+    Lctl2 => Lctl2,
+    Mcnt1 => Mcnt,
+    Mcnt2 => Moffs,
+    Ochan => Ochan,
+    Oned => Oned,
+    Tptr => Tptr,
+    Post => Post,
+    Ena => En,
 }
 
 #[cfg(test)]
