@@ -12,6 +12,9 @@ pub enum OscillatorSourceEnum {
     Ipo,
     /// Internal Secondary Oscillator (60 MHz)
     Iso,
+    /// Internal Phase-Locked Loop (100/200 MHz)
+    #[cfg(feature = "max78002")]
+    Ipll,
     // Inro,
     /// Internal Baud Rate Oscillator (7.3728 MHz)
     Ibro,
@@ -29,6 +32,8 @@ pub trait OscillatorSource: crate::Sealed {
 
 pub struct InternalPrimaryOscillator;
 pub struct InternalSecondaryOscillator;
+#[cfg(feature = "max78002")]
+pub struct InternalPll;
 // pub struct InternalNanoRingOscillator;
 pub struct InternalBaudRateOscillator;
 pub struct ExternalRtcOscillator;
@@ -36,6 +41,8 @@ pub struct ExternalRtcOscillator;
 
 impl crate::Sealed for InternalPrimaryOscillator {}
 impl crate::Sealed for InternalSecondaryOscillator {}
+#[cfg(feature = "max78002")]
+impl crate::Sealed for InternalPll {}
 impl crate::Sealed for InternalBaudRateOscillator {}
 impl crate::Sealed for ExternalRtcOscillator {}
 
@@ -49,6 +56,12 @@ impl OscillatorSource for InternalPrimaryOscillator {
 impl OscillatorSource for InternalSecondaryOscillator {
     const SOURCE: OscillatorSourceEnum = OscillatorSourceEnum::Iso;
     const BASE_FREQUENCY: u32 = 60_000_000; // 60 MHz
+}
+#[cfg(feature = "max78002")]
+impl OscillatorSource for InternalPll {
+    const SOURCE: OscillatorSourceEnum = OscillatorSourceEnum::Ipll;
+    /// System clock branch. The CNN branch runs at 200 MHz.
+    const BASE_FREQUENCY: u32 = 100_000_000; // 100 MHz
 }
 impl OscillatorSource for InternalBaudRateOscillator {
     const SOURCE: OscillatorSourceEnum = OscillatorSourceEnum::Ibro;
@@ -84,6 +97,8 @@ impl ClockOption for PeripheralClock {}
 
 impl ClockOption for InternalPrimaryOscillator {}
 impl ClockOption for InternalSecondaryOscillator {}
+#[cfg(feature = "max78002")]
+impl ClockOption for InternalPll {}
 impl ClockOption for InternalBaudRateOscillator {}
 impl ClockOption for ExternalRtcOscillator {}
 
@@ -184,6 +199,8 @@ where
 pub struct OscillatorGuards {
     pub ipo: OscillatorGuard<InternalPrimaryOscillator>,
     pub iso: OscillatorGuard<InternalSecondaryOscillator>,
+    #[cfg(feature = "max78002")]
+    pub ipll: OscillatorGuard<InternalPll>,
     pub ibro: OscillatorGuard<InternalBaudRateOscillator>,
     pub ertco: OscillatorGuard<ExternalRtcOscillator>,
 }
@@ -193,6 +210,8 @@ impl OscillatorGuards {
         Self {
             ipo: OscillatorGuard::new(),
             iso: OscillatorGuard::new(),
+            #[cfg(feature = "max78002")]
+            ipll: OscillatorGuard::new(),
             ibro: OscillatorGuard::new(),
             ertco: OscillatorGuard::new(),
         }
@@ -255,6 +274,29 @@ impl Oscillator<InternalSecondaryOscillator, Enabled> {
         Clock::<InternalSecondaryOscillator> {
             _src: PhantomData,
             frequency: InternalSecondaryOscillator::BASE_FREQUENCY,
+        }
+    }
+}
+
+#[cfg(feature = "max78002")]
+pub type Ipll = Oscillator<InternalPll, Disabled>;
+#[cfg(feature = "max78002")]
+impl Ipll {
+    pub fn enable(self, reg: &mut super::GcrRegisters) -> Oscillator<InternalPll, Enabled> {
+        reg.gcr.ipll_ctrl().modify(|_, w| w.en().set_bit());
+        while reg.gcr.ipll_ctrl().read().rdy().bit_is_clear() {} // wait for lock
+        Oscillator {
+            _source: PhantomData,
+            _state: PhantomData,
+        }
+    }
+}
+#[cfg(feature = "max78002")]
+impl Oscillator<InternalPll, Enabled> {
+    pub const fn into_clock(self) -> Clock<InternalPll> {
+        Clock::<InternalPll> {
+            _src: PhantomData,
+            frequency: InternalPll::BASE_FREQUENCY,
         }
     }
 }
@@ -347,6 +389,10 @@ where
             }
             OscillatorSourceEnum::Iso => {
                 reg.gcr.clkctrl().modify(|_, w| w.sysclk_sel().iso());
+            }
+            #[cfg(feature = "max78002")]
+            OscillatorSourceEnum::Ipll => {
+                reg.gcr.clkctrl().modify(|_, w| w.sysclk_sel().ipll());
             }
             OscillatorSourceEnum::Ibro => {
                 reg.gcr.clkctrl().modify(|_, w| w.sysclk_sel().ibro());
