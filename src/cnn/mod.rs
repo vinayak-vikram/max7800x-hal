@@ -410,3 +410,72 @@ pub const EMIT_ORDER: [LayerReg; 20] = [
     LayerReg::Post,
     LayerReg::En,
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn emit_order_covers_every_register_once() {
+        for expected in regs::ALL_LAYER_REGS {
+            let count = EMIT_ORDER.iter().filter(|r| **r == expected).count();
+            assert_eq!(count, 1, "{expected:?} appears {count} times in EMIT_ORDER");
+        }
+        assert_eq!(EMIT_ORDER.len(), regs::ALL_LAYER_REGS.len());
+    }
+
+    #[test]
+    fn enables_are_written_last() {
+        assert_eq!(*EMIT_ORDER.last().unwrap(), LayerReg::En);
+    }
+
+    #[test]
+    fn oned_is_written_after_output_channel_count() {
+        let pos = |r: LayerReg| EMIT_ORDER.iter().position(|x| *x == r).unwrap();
+        assert!(pos(LayerReg::Oned) > pos(LayerReg::Ochan));
+        assert!(pos(LayerReg::Post) > pos(LayerReg::Tptr));
+    }
+
+    #[test]
+    fn dividers_match_their_names() {
+        assert_eq!(CnnClockDiv::Div1.divisor(), 1);
+        assert_eq!(CnnClockDiv::Div2.divisor(), 2);
+        assert_eq!(CnnClockDiv::Div4.divisor(), 4);
+        assert_eq!(CnnClockDiv::Div8.divisor(), 8);
+        assert_eq!(CnnClockDiv::Div16.divisor(), 16);
+        // The reset value of PCLKDIV.CNNCLKDIV is div-by-2, not div-by-1.
+        assert_eq!(CnnClockDiv::default(), CnnClockDiv::Div2);
+    }
+
+    /// The PLL's CNN branch runs at twice the system branch, so the source
+    /// frequency must not be taken from the `Clock` itself.
+    #[test]
+    fn pll_source_uses_the_cnn_branch() {
+        assert_eq!(InternalPll::CNN_FREQUENCY, MAX_PIPELINED_FREQUENCY);
+        assert_eq!(
+            InternalPll::CNN_FREQUENCY,
+            2 * <InternalPll as crate::gcr::clocks::OscillatorSource>::BASE_FREQUENCY
+        );
+    }
+
+    #[test]
+    fn full_speed_needs_the_pipeline_and_the_pll() {
+        // Only the PLL undivided reaches the rated maximum.
+        assert_eq!(
+            InternalPll::CNN_FREQUENCY / CnnClockDiv::Div1.divisor(),
+            MAX_PIPELINED_FREQUENCY
+        );
+        // Div4 is the fastest PLL setting a non-pipelined part can take.
+        assert!(
+            InternalPll::CNN_FREQUENCY / CnnClockDiv::Div4.divisor() <= MAX_NON_PIPELINED_FREQUENCY
+        );
+        assert!(
+            InternalPll::CNN_FREQUENCY / CnnClockDiv::Div2.divisor() > MAX_NON_PIPELINED_FREQUENCY
+        );
+    }
+
+    #[test]
+    fn pipeline_defaults_to_enabled() {
+        assert_eq!(Pipeline::default(), Pipeline::Enabled);
+    }
+}
