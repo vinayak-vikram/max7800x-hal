@@ -3,6 +3,7 @@
 //! The datasheet is gee.
 //!
 
+pub mod memory;
 pub mod regs;
 
 pub use regs::{LayerReg, LayerRegs, Quadrant, Reg};
