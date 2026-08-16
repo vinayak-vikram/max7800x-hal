@@ -621,6 +621,63 @@ impl Activation {
     }
 }
 
+/// Stream processing start
+register! {
+    Stream1
+}
+
+impl Stream1 {
+    field!(isval, with_isval, 0, 15);
+    flag!(fifo_go, with_fifo_go, 25);
+}
+
+impl core::fmt::Debug for Stream1 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Stream1")
+            .field("isval", &self.isval())
+            .field("fifo_go", &self.fifo_go())
+            .finish()
+    }
+}
+
+/// Stream processing delta
+register! {
+    Stream2
+}
+
+impl Stream2 {
+    field!(invol, with_invol, 0, 4);
+    field!(dsval1, with_dsval1, 4, 5);
+    field!(dsval2, with_dsval2, 16, 14);
+}
+
+impl core::fmt::Debug for Stream2 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Stream2")
+            .field("invol", &self.invol())
+            .field("dsval1", &self.dsval1())
+            .field("dsval2", &self.dsval2())
+            .finish()
+    }
+}
+
+/// Ring buffer size
+register! {
+    Fmax
+}
+
+impl Fmax {
+    field!(fbuf_max, with_fbuf_max, 0, 18);
+}
+
+impl core::fmt::Debug for Fmax {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Fmax")
+            .field("fbuf_max", &self.fbuf_max())
+            .finish()
+    }
+}
+
 /// its beautiful 🥹
 pub trait LayerRegister: Copy + core::fmt::Debug {
     const REG: LayerReg;
@@ -1474,6 +1531,46 @@ mod tests {
         assert!(rendered(LayerReg::En, 0xffff_ffff)
             .as_str()
             .starts_with("Ena"));
+    }
+
+    /// mobilefacenet-112 is the only shipped network that streams.
+    #[test]
+    fn streaming_registers_roundtrip() {
+        for bits in [0x1, 0x147, 0x15f, 0x1ef, 0x287, 0x3cb] {
+            let s = Stream1::from_bits(bits);
+            let rebuilt = Stream1::new()
+                .with_isval(s.isval())
+                .with_fifo_go(s.fifo_go());
+            assert_eq!(rebuilt.bits(), bits, "Stream1 {bits:#010x}");
+            assert!(!s.fifo_go(), "no shipped network uses --fifo-go");
+        }
+
+        for bits in [
+            0x0001_0011,
+            0x0001_0013,
+            0x0001_0014,
+            0x0072_0021,
+            0x00a2_0025,
+            0x0142_0022,
+        ] {
+            let s = Stream2::from_bits(bits);
+            let rebuilt = Stream2::new()
+                .with_invol(s.invol())
+                .with_dsval1(s.dsval1())
+                .with_dsval2(s.dsval2());
+            assert_eq!(rebuilt.bits(), bits, "Stream2 {bits:#010x}");
+        }
+
+        for bits in [0x2, 0x148, 0x161, 0x1f1, 0x288, 0x3cd] {
+            let f = Fmax::from_bits(bits);
+            assert_eq!(Fmax::new().with_fbuf_max(f.fbuf_max()).bits(), bits);
+        }
+
+        // Slot 1 of mobilefacenet-112, decoded.
+        let delta = Stream2::from_bits(0x0142_0022);
+        assert_eq!(delta.invol(), 2);
+        assert_eq!(delta.dsval1(), 2);
+        assert_eq!(delta.dsval2(), 322);
     }
 
     /// The payoff the plan is after: a dumped word reads as fields, not hex.

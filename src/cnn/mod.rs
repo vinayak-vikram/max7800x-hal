@@ -5,6 +5,7 @@
 
 pub mod fields;
 pub mod memory;
+pub mod network;
 pub mod regs;
 
 pub use regs::{LayerReg, LayerRegs, Quadrant, Reg};
