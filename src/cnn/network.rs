@@ -160,6 +160,11 @@ impl<'a, M: InputMode> Network<'a, M> {
     pub const fn has_bias(&self) -> bool {
         self.bias.is_some()
     }
+
+    /// Total words the output regions cover.
+    pub fn output_words(&self) -> usize {
+        self.output.iter().map(|r| r.len as usize).sum()
+    }
 }
 
 #[cfg(test)]
@@ -317,5 +322,62 @@ mod tests {
         let layers = [streaming];
         let net: Network<Fifo> = Network::new(&layers, 0, 0, &[], None, &[]);
         assert!(net.is_streaming());
+    }
+    /// `kws20_demo` produces 21 words of 32-bit output from six regions:
+    /// five of four words and one of one.
+    #[test]
+    fn output_words_sums_the_regions() {
+        const OUTPUT: [OutputRegion; 6] = [
+            OutputRegion {
+                quadrant: 0,
+                instance: 0,
+                word: 2048,
+                len: 4,
+            },
+            OutputRegion {
+                quadrant: 0,
+                instance: 1,
+                word: 2048,
+                len: 4,
+            },
+            OutputRegion {
+                quadrant: 0,
+                instance: 2,
+                word: 2048,
+                len: 4,
+            },
+            OutputRegion {
+                quadrant: 0,
+                instance: 3,
+                word: 2048,
+                len: 4,
+            },
+            OutputRegion {
+                quadrant: 1,
+                instance: 0,
+                word: 2048,
+                len: 4,
+            },
+            OutputRegion {
+                quadrant: 1,
+                instance: 1,
+                word: 2048,
+                len: 1,
+            },
+        ];
+        let net: Network<Direct> = Network::new(&[], 0, 0, &[], None, &OUTPUT);
+        assert_eq!(net.output_words(), 21);
+
+        // mobilefacenet-112: 64 channels of 8-bit output as 16 single words,
+        // one per instance across all four quadrants.
+        const BYTES: [OutputRegion; 16] = [OutputRegion {
+            quadrant: 0,
+            instance: 0,
+            word: 10240,
+            len: 1,
+        }; 16];
+        let net: Network<Fifo> = Network::new(&[], 0, 0, &[], None, &BYTES);
+        assert_eq!(net.output_words(), 16);
+        assert_eq!(net.output_words() * 4, 64);
     }
 }

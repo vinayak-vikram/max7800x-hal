@@ -406,6 +406,57 @@ impl Cnn<Enabled> {
         self.q0.ctl().modify(|_, w| w.en().set_bit());
     }
 
+    /// Read a network's 32-bit output.
+    pub fn read_u32<M: InputMode>(&self, network: &Network<M>, dst: &mut [u32]) -> usize {
+        let needed = network.output_words();
+        assert!(
+            dst.len() >= needed,
+            "output buffer holds {} words, network produces {}",
+            dst.len(),
+            needed
+        );
+
+        let mut pos = 0;
+        for region in network.output {
+            let len = region.len as usize;
+            memory::read_data(
+                region.quadrant,
+                region.instance,
+                region.word as u32,
+                &mut dst[pos..pos + len],
+            );
+            pos += len;
+        }
+        pos
+    }
+
+    /// Read a network's 8-bit output, four channels per word.
+    pub fn read_u8<M: InputMode>(&self, network: &Network<M>, dst: &mut [u8]) -> usize {
+        let needed = network.output_words() * 4;
+        assert!(
+            dst.len() >= needed,
+            "output buffer holds {} bytes, network produces {}",
+            dst.len(),
+            needed
+        );
+
+        let mut pos = 0;
+        for region in network.output {
+            for word in 0..region.len as u32 {
+                let mut buf = [0u32; 1];
+                memory::read_data(
+                    region.quadrant,
+                    region.instance,
+                    region.word as u32 + word,
+                    &mut buf,
+                );
+                dst[pos..pos + 4].copy_from_slice(&buf[0].to_le_bytes());
+                pos += 4;
+            }
+        }
+        pos
+    }
+
     /// The accelerator clock frequency, after the divider
     pub const fn frequency(&self) -> u32 {
         match self.source {

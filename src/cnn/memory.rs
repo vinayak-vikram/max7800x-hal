@@ -302,6 +302,53 @@ mod tests {
         assert!(bias_addr(0) + BIAS_ENTRIES * 4 <= tram_addr(0, 0));
     }
 
+    /// `kws20_demo` unloads 21 words of 32-bit output. The generated sequence
+    /// reads four words from each of six places; these are its addresses.
+    #[test]
+    fn output_addresses_match_the_generated_unload() {
+        let at = |q, i, word: u32| data_addr(q, i) + word * 4;
+        assert_eq!(at(0, 0, 2048), 0x5180_2000);
+        assert_eq!(at(0, 1, 2048), 0x5182_2000);
+        assert_eq!(at(0, 2, 2048), 0x5184_2000);
+        assert_eq!(at(0, 3, 2048), 0x5186_2000);
+        assert_eq!(at(1, 0, 2048), 0x5280_2000);
+        assert_eq!(at(1, 1, 2048), 0x5282_2000);
+    }
+
+    /// `mobilefacenet-112` unloads 8-bit output. Its C loop does
+    /// `addr += 0x8000` on a `uint32_t *`, which advances 0x20000 **bytes** —
+    /// one whole instance — so the walk crosses instances rather than words.
+    #[test]
+    fn eight_bit_output_walks_instances_not_words() {
+        let at = |q, i, word: u32| data_addr(q, i) + word * 4;
+        assert_eq!(at(0, 0, 10240), 0x5180_a000);
+        // One `addr += 0x8000` step in the generated loop.
+        assert_eq!(at(0, 1, 10240), at(0, 0, 10240) + 0x2_0000);
+        assert_eq!(at(0, 2, 10240), 0x5184_a000);
+        assert_eq!(at(1, 0, 10240), 0x5280_a000);
+
+        // The offset sits past the first processor's backed words but inside
+        // the window, which is why the bound is the window.
+        assert!(10240 > DATA_INSTANCE_WORDS);
+        assert!(10240 * 4 < DATA_WINDOW_BYTES);
+    }
+
+    /// The generated unload emits `val & 0xff`, then `>> 8`, `>> 16`, `>> 24`.
+    #[test]
+    fn word_unpacks_least_significant_byte_first() {
+        let val: u32 = 0x4433_2211;
+        assert_eq!(val.to_le_bytes(), [0x11, 0x22, 0x33, 0x44]);
+        assert_eq!(
+            val.to_le_bytes(),
+            [
+                (val & 0xff) as u8,
+                ((val >> 8) & 0xff) as u8,
+                ((val >> 16) & 0xff) as u8,
+                ((val >> 24) & 0xff) as u8,
+            ]
+        );
+    }
+
     #[test]
     fn bound_rejects_bursts_that_leave_the_window() {
         assert!(kernel_burst_fits(0, (KERNEL_WINDOW_BYTES / 4) as usize));
