@@ -3,11 +3,11 @@
 //! The TRNG is a hardware module that generates random numbers using
 //! physical entropy sources.
 #[cfg(feature = "rand")]
+use rand_core::impls::{fill_bytes_via_next, next_u64_via_u32};
+#[cfg(feature = "rand")]
 use rand_core::CryptoRng;
 #[cfg(feature = "rand")]
 use rand_core::RngCore;
-#[cfg(feature = "rand")]
-use rand_core::impls::{fill_bytes_via_next, next_u64_via_u32};
 
 /// # True Random Number Generator (TRNG) Peripheral
 ///

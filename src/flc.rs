@@ -126,7 +126,7 @@ impl Flc {
 
         Ok(address)
     }
-    
+
     /// Get the page number of a flash address.
     #[inline]
     pub fn get_page_number(&self, address: u32) -> Result<u32, FlashError> {
