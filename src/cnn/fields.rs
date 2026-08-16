@@ -228,6 +228,193 @@ value_register! {
     RptrBase
 }
 
+/// Layer control
+register! {
+    Lctl
+}
+
+impl Lctl {
+    flag!(unnamed5, with_unnamed5, 5);
+    flag!(chw, with_chw, 6);
+    flag!(pool_ena, with_pool_ena, 7);
+    flag!(maxpool, with_maxpool, 8);
+    flag!(relu, with_relu, 9);
+    flag!(global_wptr, with_global_wptr, 11);
+    field!(siena, with_siena, 12, 4);
+    flag!(wide_out, with_wide_out, 16);
+    flag!(rd_ahead, with_rd_ahead, 17);
+    field!(cprime_max, with_cprime_max, 18, 4);
+    field!(rprime_max, with_rprime_max, 22, 4);
+    field!(shift_cnt, with_shift_cnt, 26, 4);
+    flag!(dw_bcast, with_dw_bcast, 29);
+    flag!(bypass, with_bypass, 30);
+}
+
+impl core::fmt::Debug for Lctl {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut s = f.debug_struct("Lctl");
+        s.field("chw", &self.chw())
+            .field("pool_ena", &self.pool_ena())
+            .field("maxpool", &self.maxpool())
+            .field("relu", &self.relu())
+            .field("global_wptr", &self.global_wptr())
+            .field("siena", &self.siena())
+            .field("wide_out", &self.wide_out())
+            .field("rd_ahead", &self.rd_ahead())
+            .field("kernel", &(self.rprime_max() + 1, self.cprime_max() + 1));
+        if self.rd_ahead() {
+            s.field("shift_cnt", &self.shift_cnt());
+        } else {
+            s.field("dw_bcast", &self.dw_bcast());
+        }
+        s.field("bypass", &self.bypass()).finish()
+    }
+}
+
+/// Layer control 2
+register! {
+    Lctl2
+}
+
+impl Lctl2 {
+    field!(maxpass, with_maxpass, 0, 4);
+    field!(wptr_inc, with_wptr_inc, 4, 8);
+    field!(xpch_max, with_xpch_max, 12, 9);
+}
+
+impl core::fmt::Debug for Lctl2 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Lctl2")
+            .field("maxpass", &self.maxpass())
+            .field("wptr_inc", &self.wptr_inc())
+            .field("xpch_max", &self.xpch_max())
+            .finish()
+    }
+}
+
+/// 1D convolution & element-wise configuration
+register! {
+    Oned
+}
+
+impl Oned {
+    field!(tscnt_max, with_tscnt_max, 0, 4);
+    field!(oned_sad, with_oned_sad, 4, 4);
+    field!(oned_width, with_oned_width, 8, 4);
+    flag!(oned_ena, with_oned_ena, 12);
+    flag!(elt_ena, with_elt_ena, 13);
+    field!(elt_fn, with_elt_fn, 14, 2);
+    flag!(pool_first, with_pool_first, 16);
+    flag!(elt_conv, with_elt_conv, 17);
+    field!(operands, with_operands, 18, 4);
+}
+
+impl core::fmt::Debug for Oned {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Oned")
+            .field("tscnt_max", &self.tscnt_max())
+            .field("oned_sad", &self.oned_sad())
+            .field("oned_width", &self.oned_width())
+            .field("oned_ena", &self.oned_ena())
+            .field("elt_ena", &self.elt_ena())
+            .field("elt_fn", &self.elt_fn())
+            .field("pool_first", &self.pool_first())
+            .field("elt_conv", &self.elt_conv())
+            .field("operands", &(self.operands() + 1))
+            .finish()
+    }
+}
+
+/// Last mask memory word
+/// Not written for passthrough layers
+register! {
+    Mcnt1
+}
+
+impl Mcnt1 {
+    field!(mexp_max, with_mexp_max, 0, 19);
+}
+
+impl core::fmt::Debug for Mcnt1 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Mcnt1")
+            .field("mexp_max", &self.mexp_max())
+            .finish()
+    }
+}
+
+/// First mask memory word
+register! {
+    Mcnt2
+}
+
+impl Mcnt2 {
+    field!(mexp_sad, with_mexp_sad, 0, 19);
+}
+
+impl core::fmt::Debug for Mcnt2 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Mcnt2")
+            .field("mexp_sad", &self.mexp_sad())
+            .finish()
+    }
+}
+
+/// Output channel count minus one
+register! {
+    Ochan
+}
+
+impl Ochan {
+    field!(ochan, with_ochan, 0, 32);
+}
+
+impl core::fmt::Debug for Ochan {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Ochan")
+            .field("channels", &(self.ochan() + 1))
+            .finish()
+    }
+}
+
+/// TRAM pointer
+register! {
+    Tptr
+}
+
+impl Tptr {
+    field!(tptr_max, with_tptr_max, 0, 16);
+    field!(tptr_sad, with_tptr_sad, 16, 16);
+}
+
+impl core::fmt::Debug for Tptr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Tptr")
+            .field("tptr_max", &self.tptr_max())
+            .field("tptr_sad", &self.tptr_sad())
+            .finish()
+    }
+}
+
+/// Processor and mask enables
+register! {
+    Ena
+}
+
+impl Ena {
+    field!(proc_ena, with_proc_ena, 0, 16);
+    field!(mask_ena, with_mask_ena, 16, 16);
+}
+
+impl core::fmt::Debug for Ena {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Ena")
+            .field("proc_ena", &format_args!("{:#06x}", self.proc_ena()))
+            .field("mask_ena", &format_args!("{:#06x}", self.mask_ena()))
+            .finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -454,5 +641,277 @@ mod tests {
         assert_eq!(Nxtlyr::new().with_next(0xff).bits(), 0x7f);
         assert_eq!(Rcnt::new().with_pad_cnt(0xff).bits(), 0x6000);
         assert_eq!(Prcnt::new().with_pool_cnt(0xff).bits(), 0x0f);
+    }
+
+    const LCTLS: [u32; 12] = [
+        0x0000_0920,
+        0x0000_08a0,
+        0x0000_0b20,
+        0x0000_eb20,
+        0x0001_e8a0,
+        0x0080_6aa0,
+        0x0080_cb20,
+        0x0088_aba0,
+        0x0089_e920,
+        0x0100_ab20,
+        0x0201_2920,
+        0x2088_0b20,
+    ];
+
+    const LCTL2S: [u32; 9] = [
+        0x0000_0001,
+        0x0000_000f,
+        0x0002_0000,
+        0x000a_0002,
+        0x0017_8035,
+        0x0019_8011,
+        0x001d_80bb,
+        0x001f_80e3,
+        0x001f_80ff,
+    ];
+
+    const ONEDS: [u32; 9] = [
+        0x0000_0003,
+        0x0000_0100,
+        0x0000_0103,
+        0x0000_1100,
+        0x0000_1300,
+        0x0000_1520,
+        0x0000_1900,
+        0x0004_6003,
+        0x0005_6003,
+    ];
+
+    const MCNT1S: [u32; 6] = [
+        0x0000_0008,
+        0x0000_0078,
+        0x0000_1210,
+        0x0002_dbf8,
+        0x0003_0d18,
+        0x0003_9df8,
+    ];
+
+    const MCNT2S: [u32; 5] = [
+        0x0000_0008,
+        0x0000_0078,
+        0x0000_1200,
+        0x0001_9e00,
+        0x0002_dc60,
+    ];
+
+    const OCHANS: [u32; 6] = [
+        0x0000_0004,
+        0x0000_000b,
+        0x0000_00cf,
+        0x0000_03ff,
+        0x0000_0b3f,
+        0x0000_3fff,
+    ];
+
+    const TPTRS: [u32; 6] = [
+        0x0000_0002,
+        0x0000_000f,
+        0x0000_006f,
+        0x0070_00a7,
+        0x0140_027f,
+        0x0460_04af,
+    ];
+
+    const ENAS: [u32; 11] = [
+        0x0000_000f,
+        0x0000_00ff,
+        0x0000_0fff,
+        0x0000_ffff,
+        0x0007_0007,
+        0x000f_000f,
+        0x00ff_00ff,
+        0x0fff_0fff,
+        0x7000_7000,
+        0xf000_f000,
+        0xffff_ffff,
+    ];
+
+    /// Rebuilt through `shift_cnt`, which spans bit 29 and so subsumes
+    /// `dw_bcast`.
+    #[test]
+    fn lctl_roundtrips() {
+        for bits in LCTLS {
+            let l = Lctl::from_bits(bits);
+            let rebuilt = Lctl::new()
+                .with_unnamed5(l.unnamed5())
+                .with_chw(l.chw())
+                .with_pool_ena(l.pool_ena())
+                .with_maxpool(l.maxpool())
+                .with_relu(l.relu())
+                .with_global_wptr(l.global_wptr())
+                .with_siena(l.siena())
+                .with_wide_out(l.wide_out())
+                .with_rd_ahead(l.rd_ahead())
+                .with_cprime_max(l.cprime_max())
+                .with_rprime_max(l.rprime_max())
+                .with_shift_cnt(l.shift_cnt())
+                .with_bypass(l.bypass());
+            assert_eq!(rebuilt.bits(), bits, "Lctl {bits:#010x}");
+        }
+    }
+
+    #[test]
+    fn lctl2_roundtrips() {
+        for bits in LCTL2S {
+            let l = Lctl2::from_bits(bits);
+            let rebuilt = Lctl2::new()
+                .with_maxpass(l.maxpass())
+                .with_wptr_inc(l.wptr_inc())
+                .with_xpch_max(l.xpch_max());
+            assert_eq!(rebuilt.bits(), bits, "Lctl2 {bits:#010x}");
+        }
+    }
+
+    #[test]
+    fn oned_roundtrips() {
+        for bits in ONEDS {
+            let o = Oned::from_bits(bits);
+            let rebuilt = Oned::new()
+                .with_tscnt_max(o.tscnt_max())
+                .with_oned_sad(o.oned_sad())
+                .with_oned_width(o.oned_width())
+                .with_oned_ena(o.oned_ena())
+                .with_elt_ena(o.elt_ena())
+                .with_elt_fn(o.elt_fn())
+                .with_pool_first(o.pool_first())
+                .with_elt_conv(o.elt_conv())
+                .with_operands(o.operands());
+            assert_eq!(rebuilt.bits(), bits, "Oned {bits:#010x}");
+        }
+    }
+
+    #[test]
+    fn mask_counts_roundtrip() {
+        for bits in MCNT1S {
+            let m = Mcnt1::from_bits(bits);
+            assert_eq!(Mcnt1::new().with_mexp_max(m.mexp_max()).bits(), bits);
+        }
+        for bits in MCNT2S {
+            let m = Mcnt2::from_bits(bits);
+            assert_eq!(Mcnt2::new().with_mexp_sad(m.mexp_sad()).bits(), bits);
+        }
+    }
+
+    #[test]
+    fn ochan_roundtrips_without_truncating() {
+        for bits in OCHANS {
+            let o = Ochan::from_bits(bits);
+            assert_eq!(Ochan::new().with_ochan(o.ochan()).bits(), bits);
+        }
+        // imagenet layer 33 needs 14 bits; a [11:0] field would lose them.
+        assert_eq!(Ochan::from_bits(0x3fff).ochan(), 0x3fff);
+    }
+
+    #[test]
+    fn tptr_roundtrips() {
+        for bits in TPTRS {
+            let t = Tptr::from_bits(bits);
+            let rebuilt = Tptr::new()
+                .with_tptr_max(t.tptr_max())
+                .with_tptr_sad(t.tptr_sad());
+            assert_eq!(rebuilt.bits(), bits, "Tptr {bits:#010x}");
+        }
+    }
+
+    #[test]
+    fn ena_roundtrips() {
+        for bits in ENAS {
+            let e = Ena::from_bits(bits);
+            let rebuilt = Ena::new()
+                .with_proc_ena(e.proc_ena())
+                .with_mask_ena(e.mask_ena());
+            assert_eq!(rebuilt.bits(), bits, "Ena {bits:#010x}");
+        }
+    }
+
+    /// kws20_demo layer 0: Conv1d, master quadrant, in a network with no bias.
+    #[test]
+    fn kws20_layer0_control() {
+        let master = Lctl::from_bits(0x0000_eb20);
+        assert!(master.unnamed5());
+        assert!(master.relu());
+        assert!(master.global_wptr());
+        assert_eq!(master.siena(), 0b1110);
+        assert!(!master.rd_ahead());
+
+        // The same layer on a non-master quadrant differs only in SIENA.
+        let slave = Lctl::from_bits(0x0000_0b20);
+        assert_eq!(slave.siena(), 0);
+        assert_eq!(slave.bits(), master.with_siena(0).bits());
+
+        let l2 = Lctl2::from_bits(0x0019_8011);
+        assert_eq!(l2.maxpass(), 1);
+        assert_eq!(l2.wptr_inc(), 1);
+        assert_eq!(l2.xpch_max(), 408);
+
+        let oned = Oned::from_bits(0x0000_1100);
+        assert!(oned.oned_ena());
+        assert_eq!(oned.oned_width(), 1);
+        assert!(!oned.elt_ena());
+        assert_eq!(oned.operands() + 1, 1);
+
+        assert_eq!(Ochan::from_bits(0x0000_00cf).ochan() + 1, 208);
+        assert_eq!(Mcnt1::from_bits(0x0000_0678).mexp_max(), 0x678);
+
+        let ena = Ena::from_bits(0xffff_ffff);
+        assert_eq!(ena.proc_ena(), 0xffff);
+        assert_eq!(ena.mask_ena(), ena.proc_ena());
+    }
+
+    /// cifar-100-effnet2 layer 15 is the only shipped layer that sets LCTL bit
+    /// 29. It is a genuine depthwise broadcast, not a `shift_cnt` spill:
+    /// `rd_ahead` is clear, so `shift_cnt` is not written at all.
+    #[test]
+    fn lctl_bit29_is_depthwise_broadcast_in_practice() {
+        let l = Lctl::from_bits(0x2088_0b20);
+        assert!(!l.rd_ahead());
+        assert!(l.dw_bcast());
+        assert_eq!(l.cprime_max() + 1, 3);
+        assert_eq!(l.rprime_max() + 1, 3);
+    }
+
+    /// The unguarded case `validate()` must reject: read-ahead without tcalc
+    /// and a large input expansion sets bit 29 through `shift_cnt` alone.
+    #[test]
+    fn lctl_shift_cnt_can_forge_broadcast() {
+        let l = Lctl::new().with_rd_ahead(true).with_shift_cnt(8);
+        assert!(l.dw_bcast());
+        assert_eq!(l.shift_cnt(), 8);
+    }
+
+    /// The inserted average-pool reset layer writes a fixed control word.
+    #[test]
+    fn inserted_passthrough_layer_control() {
+        let l = Lctl::from_bits(0x920);
+        assert!(l.unnamed5());
+        assert!(l.maxpool());
+        assert!(l.global_wptr());
+        assert!(!l.pool_ena());
+        assert_eq!(l.siena(), 0);
+
+        let ena = Ena::from_bits(1);
+        assert_eq!(ena.proc_ena(), 1);
+        assert_eq!(ena.mask_ena(), 0);
+    }
+
+    /// Element-wise layers encode the operand count minus one.
+    #[test]
+    fn eltwise_operands() {
+        let o = Oned::from_bits(0x0004_6003);
+        assert!(o.elt_ena());
+        assert!(!o.oned_ena());
+        assert_eq!(o.elt_fn(), 1);
+        assert_eq!(o.operands() + 1, 2);
+        assert!(!o.pool_first());
+
+        // Same layer with pooling ahead of the element-wise op.
+        let pooled = Oned::from_bits(0x0005_6003);
+        assert!(pooled.pool_first());
+        assert_eq!(pooled.bits(), o.with_pool_first(true).bits());
     }
 }
