@@ -3,6 +3,7 @@
 //! The datasheet is gee.
 //!
 
+pub mod fields;
 pub mod memory;
 pub mod regs;
 
