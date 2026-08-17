@@ -226,7 +226,7 @@ value_register! {
 }
 
 value_register! {
-    /// Data SRAM read pinter
+    /// Data SRAM read pointer
     RptrBase
 }
 
