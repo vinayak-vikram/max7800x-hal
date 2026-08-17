@@ -269,7 +269,7 @@ mod tests {
     #[test]
     fn source_enables_belong_to_the_master() {
         let mut layer = Layer::default();
-        layer.lctl[1] = Lctl::new().with_siena(0b1110);
+        layer.lctl[1] = Lctl::from_bits(0b1110 << 12);
         assert_eq!(
             net(&[layer]).validate(),
             Err(Invalid::SourceEnables {
@@ -279,7 +279,7 @@ mod tests {
         );
 
         let mut layer = Layer::default();
-        layer.lctl[0] = Lctl::new().with_siena(0b1111);
+        layer.lctl[0] = Lctl::from_bits(0b1111 << 12);
         assert_eq!(
             net(&[layer]).validate(),
             Err(Invalid::SourceEnables {
@@ -294,7 +294,7 @@ mod tests {
     /// of 8 or more, but no shipped layer does both.
     #[test]
     fn read_ahead_shift_collision_is_rejected() {
-        let bad = Lctl::new().with_rd_ahead(true).with_shift_cnt(8);
+        let bad = Lctl::from_bits((1 << 17) | (8 << 26));
         let mut layer = Layer::default();
         layer.lctl = [bad; 4];
         assert_eq!(
@@ -307,18 +307,18 @@ mod tests {
 
         // Seven fits in the three bits below DW_BCAST.
         let mut layer = Layer::default();
-        layer.lctl = [Lctl::new().with_rd_ahead(true).with_shift_cnt(7); 4];
+        layer.lctl = [Lctl::from_bits((1 << 17) | (7 << 26)); 4];
         assert_eq!(net(&[layer]).validate(), Ok(()));
 
         // With tcalc the field is a different, smaller quantity.
         let mut layer = Layer::default();
         layer.lctl = [bad; 4];
-        layer.post = [Post::new().with_tcalc(true); 4];
+        layer.post = [Post::from_bits(1 << 31); 4];
         assert_eq!(net(&[layer]).validate(), Ok(()));
 
         // Read-ahead is what makes the field mean in_expand at all.
         let mut layer = Layer::default();
-        layer.lctl = [Lctl::new().with_shift_cnt(15); 4];
+        layer.lctl = [Lctl::from_bits(15 << 26); 4];
         assert_eq!(net(&[layer]).validate(), Ok(()));
     }
 

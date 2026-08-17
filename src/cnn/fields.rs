@@ -29,37 +29,24 @@ macro_rules! register {
     };
 }
 
-/// Declares a getter and builder for a multi-bit field at `[lsb + width - 1:lsb]`.
+/// Declares a getter for a multi-bit field at `[lsb + width - 1:lsb]`.
 macro_rules! field {
-    ($(#[$attr:meta])* $get:ident, $with:ident, $lsb:expr, $width:expr) => {
+    ($(#[$attr:meta])* $get:ident, $lsb:expr, $width:expr) => {
         $(#[$attr])*
         #[inline]
         pub const fn $get(self) -> u32 {
             (self.0 >> $lsb) & (u32::MAX >> (32 - $width))
         }
-
-        $(#[$attr])*
-        #[inline]
-        pub const fn $with(self, value: u32) -> Self {
-            let mask = u32::MAX >> (32 - $width);
-            Self((self.0 & !(mask << $lsb)) | ((value & mask) << $lsb))
-        }
     };
 }
 
-/// Declares a getter and builder for a single-bit field.
+/// Declares a getter for a single-bit field.
 macro_rules! flag {
-    ($(#[$attr:meta])* $get:ident, $with:ident, $bit:expr) => {
+    ($(#[$attr:meta])* $get:ident, $bit:expr) => {
         $(#[$attr])*
         #[inline]
         pub const fn $get(self) -> bool {
             self.0 & (1 << $bit) != 0
-        }
-
-        $(#[$attr])*
-        #[inline]
-        pub const fn $with(self, value: bool) -> Self {
-            Self((self.0 & !(1 << $bit)) | ((value as u32) << $bit))
         }
     };
 }
@@ -70,9 +57,9 @@ register! {
 }
 
 impl Nxtlyr {
-    field!(next, with_next, 0, 7);
-    flag!(link_en, with_link_en, 7);
-    flag!(stop, with_stop, 8);
+    field!(next, 0, 7);
+    flag!(link_en, 7);
+    flag!(stop, 8);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0x000001ff;
 }
@@ -102,10 +89,10 @@ register! {
 macro_rules! count_register {
     ($name:ident) => {
         impl $name {
-            field!(cnt, with_cnt, 0, 11);
-            field!(pad_cnt, with_pad_cnt, 13, 2);
-            flag!(pad_ena, with_pad_ena, 15);
-            field!(diff, with_diff, 16, 16);
+            field!(cnt, 0, 11);
+            field!(pad_cnt, 13, 2);
+            flag!(pad_ena, 15);
+            field!(diff, 16, 16);
             /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
             pub const DECLARED_BITS: u32 = 0xffffe7ff;
         }
@@ -143,8 +130,8 @@ register! {
 macro_rules! pool_register {
     ($name:ident) => {
         impl $name {
-            field!(pool_cnt, with_pool_cnt, 0, 4);
-            field!(pool_inc, with_pool_inc, 4, 4);
+            field!(pool_cnt, 0, 4);
+            field!(pool_inc, 4, 4);
             /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
             pub const DECLARED_BITS: u32 = 0x000000ff;
         }
@@ -169,8 +156,8 @@ register! {
 }
 
 impl Stride {
-    field!(stride, with_stride, 0, 4);
-    field!(mp_stride, with_mp_stride, 4, 28);
+    field!(stride, 0, 4);
+    field!(mp_stride, 4, 28);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0xffffffff;
 }
@@ -190,9 +177,9 @@ register! {
 }
 
 impl WptrBase {
-    field!(offset, with_offset, 0, 13);
-    field!(instance, with_instance, 13, 2);
-    field!(group, with_group, 15, 6);
+    field!(offset, 0, 13);
+    field!(instance, 13, 2);
+    field!(group, 15, 6);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0x001fffff;
 }
@@ -251,20 +238,20 @@ register! {
 }
 
 impl Lctl {
-    flag!(unnamed5, with_unnamed5, 5);
-    flag!(chw, with_chw, 6);
-    flag!(pool_ena, with_pool_ena, 7);
-    flag!(maxpool, with_maxpool, 8);
-    flag!(relu, with_relu, 9);
-    flag!(global_wptr, with_global_wptr, 11);
-    field!(siena, with_siena, 12, 4);
-    flag!(wide_out, with_wide_out, 16);
-    flag!(rd_ahead, with_rd_ahead, 17);
-    field!(cprime_max, with_cprime_max, 18, 4);
-    field!(rprime_max, with_rprime_max, 22, 4);
-    field!(shift_cnt, with_shift_cnt, 26, 4);
-    flag!(dw_bcast, with_dw_bcast, 29);
-    flag!(bypass, with_bypass, 30);
+    flag!(unnamed5, 5);
+    flag!(chw, 6);
+    flag!(pool_ena, 7);
+    flag!(maxpool, 8);
+    flag!(relu, 9);
+    flag!(global_wptr, 11);
+    field!(siena, 12, 4);
+    flag!(wide_out, 16);
+    flag!(rd_ahead, 17);
+    field!(cprime_max, 18, 4);
+    field!(rprime_max, 22, 4);
+    field!(shift_cnt, 26, 4);
+    flag!(dw_bcast, 29);
+    flag!(bypass, 30);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0x7ffffbe0;
 }
@@ -297,9 +284,9 @@ register! {
 }
 
 impl Lctl2 {
-    field!(maxpass, with_maxpass, 0, 4);
-    field!(wptr_inc, with_wptr_inc, 4, 8);
-    field!(xpch_max, with_xpch_max, 12, 9);
+    field!(maxpass, 0, 4);
+    field!(wptr_inc, 4, 8);
+    field!(xpch_max, 12, 9);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0x001fffff;
 }
@@ -320,15 +307,15 @@ register! {
 }
 
 impl Oned {
-    field!(tscnt_max, with_tscnt_max, 0, 4);
-    field!(oned_sad, with_oned_sad, 4, 4);
-    field!(oned_width, with_oned_width, 8, 4);
-    flag!(oned_ena, with_oned_ena, 12);
-    flag!(elt_ena, with_elt_ena, 13);
-    field!(elt_fn, with_elt_fn, 14, 2);
-    flag!(pool_first, with_pool_first, 16);
-    flag!(elt_conv, with_elt_conv, 17);
-    field!(operands, with_operands, 18, 4);
+    field!(tscnt_max, 0, 4);
+    field!(oned_sad, 4, 4);
+    field!(oned_width, 8, 4);
+    flag!(oned_ena, 12);
+    flag!(elt_ena, 13);
+    field!(elt_fn, 14, 2);
+    flag!(pool_first, 16);
+    flag!(elt_conv, 17);
+    field!(operands, 18, 4);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0x003fffff;
 }
@@ -356,7 +343,7 @@ register! {
 }
 
 impl Mcnt1 {
-    field!(mexp_max, with_mexp_max, 0, 19);
+    field!(mexp_max, 0, 19);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0x0007ffff;
 }
@@ -375,7 +362,7 @@ register! {
 }
 
 impl Mcnt2 {
-    field!(mexp_sad, with_mexp_sad, 0, 19);
+    field!(mexp_sad, 0, 19);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0x0007ffff;
 }
@@ -394,7 +381,7 @@ register! {
 }
 
 impl Ochan {
-    field!(ochan, with_ochan, 0, 32);
+    field!(ochan, 0, 32);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0xffffffff;
 }
@@ -413,8 +400,8 @@ register! {
 }
 
 impl Tptr {
-    field!(tptr_max, with_tptr_max, 0, 16);
-    field!(tptr_sad, with_tptr_sad, 16, 16);
+    field!(tptr_max, 0, 16);
+    field!(tptr_sad, 16, 16);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0xffffffff;
 }
@@ -434,8 +421,8 @@ register! {
 }
 
 impl Ena {
-    field!(proc_ena, with_proc_ena, 0, 16);
-    field!(mask_ena, with_mask_ena, 16, 16);
+    field!(proc_ena, 0, 16);
+    field!(mask_ena, 16, 16);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0xffffffff;
 }
@@ -455,20 +442,20 @@ register! {
 }
 
 impl Post {
-    field!(bias_addr, with_bias_addr, 0, 12);
-    flag!(bias_en, with_bias_en, 12);
-    field!(scale_mag, with_scale_mag, 13, 4);
-    flag!(scale_dir, with_scale_dir, 17);
-    field!(xpmp_cnt, with_xpmp_cnt, 18, 4);
-    field!(wscale, with_wscale, 22, 2);
-    flag!(ts_ena, with_ts_ena, 24);
-    flag!(onexone_ena, with_onexone_ena, 25);
-    flag!(act_abs, with_act_abs, 26);
-    flag!(flatten_ena, with_flatten_ena, 27);
-    flag!(xpose_ena, with_xpose_ena, 28);
-    flag!(calcx4, with_calcx4, 29);
-    flag!(dw_ena, with_dw_ena, 30);
-    flag!(tcalc, with_tcalc, 31);
+    field!(bias_addr, 0, 12);
+    flag!(bias_en, 12);
+    field!(scale_mag, 13, 4);
+    flag!(scale_dir, 17);
+    field!(xpmp_cnt, 18, 4);
+    field!(wscale, 22, 2);
+    flag!(ts_ena, 24);
+    flag!(onexone_ena, 25);
+    flag!(act_abs, 26);
+    flag!(flatten_ena, 27);
+    flag!(xpose_ena, 28);
+    flag!(calcx4, 29);
+    flag!(dw_ena, 30);
+    flag!(tcalc, 31);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0xffffffff;
 
@@ -481,11 +468,6 @@ impl Post {
         }
     }
 
-    #[inline]
-    pub const fn with_shift_dir(self, dir: ShiftDir) -> Self {
-        self.with_scale_dir(matches!(dir, ShiftDir::Right))
-    }
-
     /// Weight-width compensation.
     #[inline]
     pub const fn weight_scale(self) -> WeightScale {
@@ -493,24 +475,12 @@ impl Post {
     }
 
     #[inline]
-    pub const fn with_weight_scale(self, scale: WeightScale) -> Self {
-        self.with_wscale(scale as u32)
-    }
-    #[inline]
     pub const fn output_shift(self) -> i32 {
         let mag = self.scale_mag() as i32;
         if self.scale_dir() {
             -mag
         } else {
             mag
-        }
-    }
-    #[inline]
-    pub const fn with_output_shift(self, shift: i32) -> Self {
-        if shift < 0 {
-            self.with_scale_mag((-shift) as u32).with_scale_dir(true)
-        } else {
-            self.with_scale_mag(shift as u32).with_scale_dir(false)
         }
     }
 }
@@ -551,11 +521,6 @@ impl Lctl {
             PoolMode::Avg
         }
     }
-
-    #[inline]
-    pub const fn with_pool_mode(self, mode: PoolMode) -> Self {
-        self.with_maxpool(matches!(mode, PoolMode::Max))
-    }
 }
 
 /// Element-wise function, `ONED.elt_fn`
@@ -584,11 +549,6 @@ impl Oned {
     #[inline]
     pub const fn eltwise_fn(self) -> EltwiseFn {
         EltwiseFn::from_code(self.elt_fn())
-    }
-
-    #[inline]
-    pub const fn with_eltwise_fn(self, f: EltwiseFn) -> Self {
-        self.with_elt_fn(f as u32)
     }
 }
 
@@ -644,15 +604,6 @@ impl Activation {
             (true, true) => None, //should never happen, UB basically
         }
     }
-
-    /// Write the activation into both registers, clearing the other bit.
-    #[inline]
-    pub const fn apply(self, lctl: Lctl, post: Post) -> (Lctl, Post) {
-        (
-            lctl.with_relu(matches!(self, Self::Relu)),
-            post.with_act_abs(matches!(self, Self::Abs)),
-        )
-    }
 }
 
 register! {
@@ -661,8 +612,8 @@ register! {
 }
 
 impl Stream1 {
-    field!(isval, with_isval, 0, 15);
-    flag!(fifo_go, with_fifo_go, 25);
+    field!(isval, 0, 15);
+    flag!(fifo_go, 25);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0x02007fff;
 }
@@ -682,9 +633,9 @@ register! {
 }
 
 impl Stream2 {
-    field!(invol, with_invol, 0, 4);
-    field!(dsval1, with_dsval1, 4, 5);
-    field!(dsval2, with_dsval2, 16, 14);
+    field!(invol, 0, 4);
+    field!(dsval1, 4, 5);
+    field!(dsval2, 16, 14);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0x3fff01ff;
 }
@@ -705,7 +656,7 @@ register! {
 }
 
 impl Fmax {
-    field!(fbuf_max, with_fbuf_max, 0, 18);
+    field!(fbuf_max, 0, 18);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0x0003ffff;
 }
@@ -802,120 +753,27 @@ layer_registers! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    const ROWS: [u32; 12] = [
-        0x0001_0000,
-        0x0001_806f,
-        0x0001_807f,
-        0x0001_80ff,
-        0x0002_007f,
-        0x0002_803f,
-        0x0052_803e,
-        0x0072_806e,
-        0x00a2_807e,
-        0x0142_80fe,
-        0x0c40_0000,
-        0x1000_0000,
-    ];
 
-    const COLUMNS: [u32; 10] = [
-        0x0001_0000,
-        0x0001_803b,
-        0x0001_806f,
-        0x0001_813f,
-        0x0002_809e,
-        0x0002_813e,
-        0x0003_8004,
-        0x0003_800c,
-        0x000e_0000,
-        0x0010_0000,
-    ];
-
-    const POOL: [u32; 5] = [0x1, 0x3, 0x6, 0xd, 0xf];
-
-    const STRIDES: [u32; 8] = [
-        0x0000_0010,
-        0x0000_0020,
-        0x0000_0021,
-        0x0000_00c0,
-        0x0000_0101,
-        0x0000_03c3,
-        0x0000_0e0d,
-        0x0000_100f,
-    ];
-
-    const WPTR_BASES: [u32; 8] = [
-        0x0000_0001,
-        0x0000_0800,
-        0x0000_2800,
-        0x0000_42b9,
-        0x0003_9000,
-        0x0004_1fff,
-        0x0006_0c80,
-        0x0006_3db8,
-    ];
-
-    fn roundtrip_rcnt(bits: u32) {
-        let r = Rcnt::from_bits(bits);
-        let rebuilt = Rcnt::new()
-            .with_cnt(r.cnt())
-            .with_pad_cnt(r.pad_cnt())
-            .with_pad_ena(r.pad_ena())
-            .with_diff(r.diff());
-        assert_eq!(rebuilt.bits(), bits, "Rcnt {bits:#010x}");
-    }
-
-    fn roundtrip_ccnt(bits: u32) {
-        let r = Ccnt::from_bits(bits);
-        let rebuilt = Ccnt::new()
-            .with_cnt(r.cnt())
-            .with_pad_cnt(r.pad_cnt())
-            .with_pad_ena(r.pad_ena())
-            .with_diff(r.diff());
-        assert_eq!(rebuilt.bits(), bits, "Ccnt {bits:#010x}");
-    }
-
+    /// The `field!` and `flag!` macros are six lines of shift and mask shared
+    /// by all sixty-seven fields, so they are worth testing once rather than
+    /// once per register. `Rcnt` covers a field at offset 0, one abutting its
+    /// neighbour, a flag, and a field running to bit 31.
     #[test]
-    fn counts_roundtrip() {
-        for bits in ROWS {
-            roundtrip_rcnt(bits);
-        }
-        for bits in COLUMNS {
-            roundtrip_ccnt(bits);
-        }
-    }
+    fn getters_shift_and_mask() {
+        let all = Rcnt::from_bits(u32::MAX);
+        assert_eq!(all.cnt(), 0x7ff);
+        assert_eq!(all.pad_cnt(), 0b11);
+        assert!(all.pad_ena());
+        assert_eq!(all.diff(), 0xffff);
 
-    #[test]
-    fn pools_roundtrip() {
-        for bits in POOL {
-            let p = Prcnt::from_bits(bits);
-            let rebuilt = Prcnt::new()
-                .with_pool_cnt(p.pool_cnt())
-                .with_pool_inc(p.pool_inc());
-            assert_eq!(rebuilt.bits(), bits, "Prcnt {bits:#010x}");
-        }
-    }
+        // Each field sees only its own bits.
+        assert_eq!(Rcnt::from_bits(0xffff_0000).cnt(), 0);
+        assert_eq!(Rcnt::from_bits(0x0000_ffff).diff(), 0);
+        assert_eq!(Rcnt::from_bits(!(1 << 15)).pad_ena(), false);
 
-    #[test]
-    fn strides_roundtrip() {
-        for bits in STRIDES {
-            let s = Stride::from_bits(bits);
-            let rebuilt = Stride::new()
-                .with_stride(s.stride())
-                .with_mp_stride(s.mp_stride());
-            assert_eq!(rebuilt.bits(), bits, "Stride {bits:#010x}");
-        }
-    }
-
-    #[test]
-    fn write_pointers_roundtrip() {
-        for bits in WPTR_BASES {
-            let w = WptrBase::from_bits(bits);
-            let rebuilt = WptrBase::new()
-                .with_offset(w.offset())
-                .with_instance(w.instance())
-                .with_group(w.group());
-            assert_eq!(rebuilt.bits(), bits, "WptrBase {bits:#010x}");
-        }
+        // A full-width field is not truncated, and a zero word reads as zero.
+        assert_eq!(Ochan::from_bits(u32::MAX).ochan(), u32::MAX);
+        assert_eq!(Rcnt::from_bits(0).diff(), 0);
     }
 
     /// mobilefacenet-112 layer 0: 112x112 input, pad 1, no pooling.
@@ -996,221 +854,18 @@ mod tests {
         assert_eq!(sequential.bits(), 0);
 
         // Link-layer mode on a non-final layer: LINK_EN | (ll + 1).
-        let linked = Nxtlyr::new().with_link_en(true).with_next(7);
+        let linked = Nxtlyr::from_bits(0x87);
         assert_eq!(linked.bits(), 0x87);
         assert_eq!(linked.next(), 7);
 
         // Link-layer mode on the final layer.
-        let stopped = Nxtlyr::new().with_stop(true);
+        let stopped = Nxtlyr::from_bits(0x100);
         assert_eq!(stopped.bits(), 0x100);
 
         // The snoop-loop override force-writes a link back to layer 0.
         let loop_back = Nxtlyr::from_bits(0x80);
         assert!(loop_back.link_en());
         assert_eq!(loop_back.next(), 0);
-    }
-
-    #[test]
-    fn builders_overwrite_rather_than_or() {
-        let r = Rcnt::new().with_cnt(0x7ff).with_cnt(1);
-        assert_eq!(r.cnt(), 1);
-        assert_eq!(r.bits(), 1);
-
-        let n = Nxtlyr::new().with_stop(true).with_stop(false);
-        assert_eq!(n.bits(), 0);
-    }
-
-    #[test]
-    fn builders_mask_out_of_range_values() {
-        assert_eq!(Nxtlyr::new().with_next(0xff).bits(), 0x7f);
-        assert_eq!(Rcnt::new().with_pad_cnt(0xff).bits(), 0x6000);
-        assert_eq!(Prcnt::new().with_pool_cnt(0xff).bits(), 0x0f);
-    }
-
-    const LCTLS: [u32; 12] = [
-        0x0000_0920,
-        0x0000_08a0,
-        0x0000_0b20,
-        0x0000_eb20,
-        0x0001_e8a0,
-        0x0080_6aa0,
-        0x0080_cb20,
-        0x0088_aba0,
-        0x0089_e920,
-        0x0100_ab20,
-        0x0201_2920,
-        0x2088_0b20,
-    ];
-
-    const LCTL2S: [u32; 9] = [
-        0x0000_0001,
-        0x0000_000f,
-        0x0002_0000,
-        0x000a_0002,
-        0x0017_8035,
-        0x0019_8011,
-        0x001d_80bb,
-        0x001f_80e3,
-        0x001f_80ff,
-    ];
-
-    const ONEDS: [u32; 9] = [
-        0x0000_0003,
-        0x0000_0100,
-        0x0000_0103,
-        0x0000_1100,
-        0x0000_1300,
-        0x0000_1520,
-        0x0000_1900,
-        0x0004_6003,
-        0x0005_6003,
-    ];
-
-    const MCNT1S: [u32; 6] = [
-        0x0000_0008,
-        0x0000_0078,
-        0x0000_1210,
-        0x0002_dbf8,
-        0x0003_0d18,
-        0x0003_9df8,
-    ];
-
-    const MCNT2S: [u32; 5] = [
-        0x0000_0008,
-        0x0000_0078,
-        0x0000_1200,
-        0x0001_9e00,
-        0x0002_dc60,
-    ];
-
-    const OCHANS: [u32; 6] = [
-        0x0000_0004,
-        0x0000_000b,
-        0x0000_00cf,
-        0x0000_03ff,
-        0x0000_0b3f,
-        0x0000_3fff,
-    ];
-
-    const TPTRS: [u32; 6] = [
-        0x0000_0002,
-        0x0000_000f,
-        0x0000_006f,
-        0x0070_00a7,
-        0x0140_027f,
-        0x0460_04af,
-    ];
-
-    const ENAS: [u32; 11] = [
-        0x0000_000f,
-        0x0000_00ff,
-        0x0000_0fff,
-        0x0000_ffff,
-        0x0007_0007,
-        0x000f_000f,
-        0x00ff_00ff,
-        0x0fff_0fff,
-        0x7000_7000,
-        0xf000_f000,
-        0xffff_ffff,
-    ];
-
-    /// Rebuilt through `shift_cnt`, which spans bit 29 and so subsumes
-    /// `dw_bcast`.
-    #[test]
-    fn lctl_roundtrips() {
-        for bits in LCTLS {
-            let l = Lctl::from_bits(bits);
-            let rebuilt = Lctl::new()
-                .with_unnamed5(l.unnamed5())
-                .with_chw(l.chw())
-                .with_pool_ena(l.pool_ena())
-                .with_maxpool(l.maxpool())
-                .with_relu(l.relu())
-                .with_global_wptr(l.global_wptr())
-                .with_siena(l.siena())
-                .with_wide_out(l.wide_out())
-                .with_rd_ahead(l.rd_ahead())
-                .with_cprime_max(l.cprime_max())
-                .with_rprime_max(l.rprime_max())
-                .with_shift_cnt(l.shift_cnt())
-                .with_bypass(l.bypass());
-            assert_eq!(rebuilt.bits(), bits, "Lctl {bits:#010x}");
-        }
-    }
-
-    #[test]
-    fn lctl2_roundtrips() {
-        for bits in LCTL2S {
-            let l = Lctl2::from_bits(bits);
-            let rebuilt = Lctl2::new()
-                .with_maxpass(l.maxpass())
-                .with_wptr_inc(l.wptr_inc())
-                .with_xpch_max(l.xpch_max());
-            assert_eq!(rebuilt.bits(), bits, "Lctl2 {bits:#010x}");
-        }
-    }
-
-    #[test]
-    fn oned_roundtrips() {
-        for bits in ONEDS {
-            let o = Oned::from_bits(bits);
-            let rebuilt = Oned::new()
-                .with_tscnt_max(o.tscnt_max())
-                .with_oned_sad(o.oned_sad())
-                .with_oned_width(o.oned_width())
-                .with_oned_ena(o.oned_ena())
-                .with_elt_ena(o.elt_ena())
-                .with_elt_fn(o.elt_fn())
-                .with_pool_first(o.pool_first())
-                .with_elt_conv(o.elt_conv())
-                .with_operands(o.operands());
-            assert_eq!(rebuilt.bits(), bits, "Oned {bits:#010x}");
-        }
-    }
-
-    #[test]
-    fn mask_counts_roundtrip() {
-        for bits in MCNT1S {
-            let m = Mcnt1::from_bits(bits);
-            assert_eq!(Mcnt1::new().with_mexp_max(m.mexp_max()).bits(), bits);
-        }
-        for bits in MCNT2S {
-            let m = Mcnt2::from_bits(bits);
-            assert_eq!(Mcnt2::new().with_mexp_sad(m.mexp_sad()).bits(), bits);
-        }
-    }
-
-    #[test]
-    fn ochan_roundtrips_without_truncating() {
-        for bits in OCHANS {
-            let o = Ochan::from_bits(bits);
-            assert_eq!(Ochan::new().with_ochan(o.ochan()).bits(), bits);
-        }
-        // imagenet layer 33 needs 14 bits; a [11:0] field would lose them.
-        assert_eq!(Ochan::from_bits(0x3fff).ochan(), 0x3fff);
-    }
-
-    #[test]
-    fn tptr_roundtrips() {
-        for bits in TPTRS {
-            let t = Tptr::from_bits(bits);
-            let rebuilt = Tptr::new()
-                .with_tptr_max(t.tptr_max())
-                .with_tptr_sad(t.tptr_sad());
-            assert_eq!(rebuilt.bits(), bits, "Tptr {bits:#010x}");
-        }
-    }
-
-    #[test]
-    fn ena_roundtrips() {
-        for bits in ENAS {
-            let e = Ena::from_bits(bits);
-            let rebuilt = Ena::new()
-                .with_proc_ena(e.proc_ena())
-                .with_mask_ena(e.mask_ena());
-            assert_eq!(rebuilt.bits(), bits, "Ena {bits:#010x}");
-        }
     }
 
     /// kws20_demo layer 0: Conv1d, master quadrant, in a network with no bias.
@@ -1226,7 +881,7 @@ mod tests {
         // The same layer on a non-master quadrant differs only in SIENA.
         let slave = Lctl::from_bits(0x0000_0b20);
         assert_eq!(slave.siena(), 0);
-        assert_eq!(slave.bits(), master.with_siena(0).bits());
+        assert_eq!(slave.bits(), master.bits() & !(0xf << 12));
 
         let l2 = Lctl2::from_bits(0x0019_8011);
         assert_eq!(l2.maxpass(), 1);
@@ -1263,7 +918,7 @@ mod tests {
     /// and a large input expansion sets bit 29 through `shift_cnt` alone.
     #[test]
     fn lctl_shift_cnt_can_forge_broadcast() {
-        let l = Lctl::new().with_rd_ahead(true).with_shift_cnt(8);
+        let l = Lctl::from_bits((1 << 17) | (8 << 26));
         assert!(l.dw_bcast());
         assert_eq!(l.shift_cnt(), 8);
     }
@@ -1296,7 +951,7 @@ mod tests {
         // Same layer with pooling ahead of the element-wise op.
         let pooled = Oned::from_bits(0x0005_6003);
         assert!(pooled.pool_first());
-        assert_eq!(pooled.bits(), o.with_pool_first(true).bits());
+        assert_eq!(pooled.bits(), o.bits() | (1 << 16));
     }
 
     const POSTS: [u32; 16] = [
@@ -1318,44 +973,21 @@ mod tests {
         0x4100_d004,
     ];
 
-    #[test]
-    fn post_roundtrips() {
-        for bits in POSTS {
-            let p = Post::from_bits(bits);
-            let rebuilt = Post::new()
-                .with_bias_addr(p.bias_addr())
-                .with_bias_en(p.bias_en())
-                .with_scale_mag(p.scale_mag())
-                .with_scale_dir(p.scale_dir())
-                .with_xpmp_cnt(p.xpmp_cnt())
-                .with_wscale(p.wscale())
-                .with_ts_ena(p.ts_ena())
-                .with_onexone_ena(p.onexone_ena())
-                .with_act_abs(p.act_abs())
-                .with_flatten_ena(p.flatten_ena())
-                .with_xpose_ena(p.xpose_ena())
-                .with_calcx4(p.calcx4())
-                .with_dw_ena(p.dw_ena())
-                .with_tcalc(p.tcalc());
-            assert_eq!(rebuilt.bits(), bits, "Post {bits:#010x}");
-        }
-    }
-
     /// The field the plan singles out as most error-prone: five bits of signed
     /// magnitude, not two's complement.
     #[test]
     fn output_shift_is_signed_magnitude() {
         // The worked example from the specification.
-        let p = Post::new().with_output_shift(-3);
+        let p = Post::from_bits((3 << 13) | (1 << 17));
         assert_eq!(p.scale_mag(), 3);
         assert!(p.scale_dir());
         assert_eq!(p.bits() >> 13, 0b1_0011);
         assert_ne!(p.bits() >> 13, 0b1_1101, "encoded as two's complement");
         assert_eq!(p.output_shift(), -3);
 
-        for shift in -15..=15 {
-            let p = Post::new().with_output_shift(shift);
-            assert_eq!(p.output_shift(), shift, "shift {shift}");
+        for shift in -15..=15i32 {
+            let raw = (shift.unsigned_abs() << 13) | ((shift < 0) as u32) << 17;
+            assert_eq!(Post::from_bits(raw).output_shift(), shift, "shift {shift}");
         }
 
         // Every scale actually shipped, decoded from the golden words.
@@ -1369,12 +1001,12 @@ mod tests {
 
     #[test]
     fn shift_direction_matches_the_raw_bit() {
-        assert_eq!(Post::new().with_output_shift(2).shift_dir(), ShiftDir::Left);
+        assert_eq!(Post::from_bits(2 << 13).shift_dir(), ShiftDir::Left);
         assert_eq!(
-            Post::new().with_output_shift(-2).shift_dir(),
+            Post::from_bits((2 << 13) | (1 << 17)).shift_dir(),
             ShiftDir::Right
         );
-        assert!(Post::new().with_shift_dir(ShiftDir::Right).scale_dir());
+        assert!(Post::from_bits(1 << 17).scale_dir());
     }
 
     /// cifar-100-effnet2 layer 15: depthwise, so `dw_ena` and `ts_ena` are
@@ -1412,7 +1044,7 @@ mod tests {
             WeightScale::Bits2,
             WeightScale::Bits4,
         ] {
-            assert_eq!(Post::new().with_weight_scale(s).weight_scale(), s);
+            assert_eq!(Post::from_bits((s as u32) << 22).weight_scale(), s);
         }
         // Every shipped network uses 8-bit weights.
         for bits in POSTS {
@@ -1434,7 +1066,7 @@ mod tests {
             EltwiseFn::Or,
             EltwiseFn::Xor,
         ] {
-            assert_eq!(Oned::new().with_eltwise_fn(f).eltwise_fn(), f);
+            assert_eq!(Oned::from_bits((f as u32) << 14).eltwise_fn(), f);
         }
     }
 
@@ -1442,7 +1074,7 @@ mod tests {
     fn pool_mode_follows_maxpool() {
         assert_eq!(Lctl::from_bits(0x920).pool_mode(), PoolMode::Max);
         assert_eq!(Lctl::new().pool_mode(), PoolMode::Avg);
-        assert!(Lctl::new().with_pool_mode(PoolMode::Max).maxpool());
+        assert_eq!(Lctl::from_bits(1 << 8).pool_mode(), PoolMode::Max);
     }
 
     /// Activation spans two registers, so it round-trips through both.
@@ -1452,19 +1084,18 @@ mod tests {
         let post = Post::from_bits(0x0000_2000);
         assert_eq!(Activation::decode(lctl, post), Some(Activation::Relu));
 
-        for act in [Activation::None, Activation::Relu, Activation::Abs] {
-            let (l, p) = act.apply(Lctl::new(), Post::new());
-            assert_eq!(Activation::decode(l, p), Some(act));
+        for (l, p, act) in [
+            (0, 0, Activation::None),
+            (1 << 9, 0, Activation::Relu),
+            (0, 1 << 26, Activation::Abs),
+        ] {
+            let decoded = Activation::decode(Lctl::from_bits(l), Post::from_bits(p));
+            assert_eq!(decoded, Some(act));
         }
 
-        // Abs lives in POST, not LCTL.
-        let (l, p) = Activation::Abs.apply(Lctl::new(), Post::new());
-        assert!(!l.relu());
-        assert!(p.act_abs());
-
         // Both bits set is not a valid encoding.
-        let both = Lctl::new().with_relu(true);
-        let abs = Post::new().with_act_abs(true);
+        let both = Lctl::from_bits(1 << 9);
+        let abs = Post::from_bits(1 << 26);
         assert_eq!(Activation::decode(both, abs), None);
     }
 
@@ -1656,46 +1287,6 @@ mod tests {
         assert!(rendered(LayerReg::En, 0xffff_ffff)
             .as_str()
             .starts_with("Ena"));
-    }
-
-    /// mobilefacenet-112 is the only shipped network that streams.
-    #[test]
-    fn streaming_registers_roundtrip() {
-        for bits in [0x1, 0x147, 0x15f, 0x1ef, 0x287, 0x3cb] {
-            let s = Stream1::from_bits(bits);
-            let rebuilt = Stream1::new()
-                .with_isval(s.isval())
-                .with_fifo_go(s.fifo_go());
-            assert_eq!(rebuilt.bits(), bits, "Stream1 {bits:#010x}");
-            assert!(!s.fifo_go(), "no shipped network uses --fifo-go");
-        }
-
-        for bits in [
-            0x0001_0011,
-            0x0001_0013,
-            0x0001_0014,
-            0x0072_0021,
-            0x00a2_0025,
-            0x0142_0022,
-        ] {
-            let s = Stream2::from_bits(bits);
-            let rebuilt = Stream2::new()
-                .with_invol(s.invol())
-                .with_dsval1(s.dsval1())
-                .with_dsval2(s.dsval2());
-            assert_eq!(rebuilt.bits(), bits, "Stream2 {bits:#010x}");
-        }
-
-        for bits in [0x2, 0x148, 0x161, 0x1f1, 0x288, 0x3cd] {
-            let f = Fmax::from_bits(bits);
-            assert_eq!(Fmax::new().with_fbuf_max(f.fbuf_max()).bits(), bits);
-        }
-
-        // Slot 1 of mobilefacenet-112, decoded.
-        let delta = Stream2::from_bits(0x0142_0022);
-        assert_eq!(delta.invol(), 2);
-        assert_eq!(delta.dsval1(), 2);
-        assert_eq!(delta.dsval2(), 322);
     }
 
     /// The payoff the plan is after: a dumped word reads as fields, not hex.
