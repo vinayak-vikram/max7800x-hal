@@ -84,6 +84,34 @@ pub struct Layer {
 }
 
 impl Layer {
+    /// A layer that configures nothing, for `..Layer::new()` in a `const`
+    pub const fn new() -> Self {
+        Self {
+            next: Nxtlyr::new(),
+            rows: Rcnt::new(),
+            cols: Ccnt::new(),
+            oned: Oned::new(),
+            pool_rows: Prcnt::new(),
+            pool_cols: Pccnt::new(),
+            stride: Stride::new(),
+            wptr_ts: WptrToffs::new(),
+            wptr_moffs: None,
+            wptr_choffs: WptrChoffs::new(),
+            rptr: RptrBase::new(),
+            lctl2: Lctl2::new(),
+            mcnt1: None,
+            mcnt2: Mcnt2::new(),
+            ochan: Ochan::new(),
+            tptr: Tptr::new(),
+            lctl: [Lctl::new(); QUADRANTS as usize],
+            post: [Post::new(); QUADRANTS as usize],
+            wptr: [WptrBase::new(); QUADRANTS as usize],
+            ena: [Ena::new(); QUADRANTS as usize],
+            stream: None,
+            master_only: false,
+        }
+    }
+
     // just for debug
     pub fn is_synthetic(&self) -> bool {
         self.rows.bits() == 0x0001_0000
@@ -446,5 +474,12 @@ mod tests {
                 expected
             );
         }
+    }
+
+    /// `new` is the const-context form of `Default`, and generated networks
+    /// use it with struct update syntax, so the two must not drift.
+    #[test]
+    fn new_matches_default() {
+        assert_eq!(Layer::new(), Layer::default());
     }
 }
