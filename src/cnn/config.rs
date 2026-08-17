@@ -4,7 +4,7 @@
 //!
 
 use super::fields::LayerRegister;
-use super::network::{InputMode, Layer, Network};
+use super::network::{Layer, Network};
 use super::regs::{LayerRegs, Quadrant, QUADRANTS};
 
 /// Index of the master quadrant.
@@ -65,8 +65,7 @@ pub fn emit_layer(sink: &mut impl LayerSink, layer: &Layer, quadrant: u8) {
 
 impl super::Cnn<crate::gcr::clocks::Enabled> {
     /// Write every layer of `network` into the register file.
-    pub fn configure<M: InputMode>(&mut self, network: &Network<M>) {
-        let () = M::CHECK;
+    pub fn configure(&mut self, network: &Network) {
         for (index, layer) in network.layers.iter().enumerate() {
             debug_assert!(
                 !layer.is_synthetic() || layer.master_only,
@@ -87,7 +86,7 @@ impl super::Cnn<crate::gcr::clocks::Enabled> {
 mod tests {
     use super::*;
     use crate::cnn::fields::*;
-    use crate::cnn::network::{Direct, Stream};
+    use crate::cnn::network::Stream;
     use crate::cnn::LayerReg;
 
     /// Records what a layer emits for debug reasons.
@@ -134,6 +133,9 @@ mod tests {
     fn master_quadrant_is_zero() {
         assert_eq!(MASTER_QUADRANT, 0);
         // The `CTL` arm words encode the master index in bits 10:9.
-        assert_eq!((Direct::START_MASTER >> 9) & 0b11, MASTER_QUADRANT as u32);
+        assert_eq!(
+            (super::super::START_MASTER >> 9) & 0b11,
+            MASTER_QUADRANT as u32
+        );
     }
 }

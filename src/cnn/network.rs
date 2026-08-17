@@ -5,49 +5,49 @@ use super::fields::{
     RptrBase, Stream1, Stream2, Stride, Tptr, WptrBase, WptrChoffs, WptrMoffs, WptrToffs,
 };
 use super::regs::QUADRANTS;
-use core::marker::PhantomData;
 
-/// How input data reaches the accelerator.
-pub trait InputMode: crate::Sealed {
-    /// Refuses a mode the HAL cannot drive, at compile time. See [`Fifo`].
-    const CHECK: () = ();
-    /// Whether input arrives through the FIFO.
-    const FIFO: bool;
-    /// `CTL` value that halts the state machine, written during init.
-    const STOP_SM: u32;
-    /// `CTL` value that arms the master quadrant. Note `CNN_EN` is **clear**
-    /// here; setting it would start the master before the others are armed.
-    const START_MASTER: u32;
-    /// `CTL` value that arms a non-master quadrant, with `CNN_EN` set.
-    const START_OTHER: u32;
-    /// `CTL` value written to the master last, which starts the network.
-    const START_GO: u32;
-}
-
-pub struct Direct;
-
-/// Placeholder. Programming a `Network<Fifo>` is a compile error.
-pub struct Fifo;
-
-impl crate::Sealed for Direct {}
-impl crate::Sealed for Fifo {}
-
-impl InputMode for Direct {
-    const FIFO: bool = false;
-    const STOP_SM: u32 = 0x0010_0008;
-    const START_MASTER: u32 = 0x0010_0808;
-    const START_OTHER: u32 = 0x0010_0809;
-    const START_GO: u32 = 0x0010_0009;
-}
-
-impl InputMode for Fifo {
-    const CHECK: () = panic!("FIFO input is not implemented; build the network with Direct");
-    const FIFO: bool = true;
-    const STOP_SM: u32 = 0x0010_8008;
-    const START_MASTER: u32 = 0x0018_c808;
-    const START_OTHER: u32 = 0x0018_c809;
-    const START_GO: u32 = 0x0018_c809;
-}
+// The accelerator can also take its input through a FIFO, which is what
+// streaming layers require. Neither is implemented; the target workload feeds
+// buffered sample windows that are already in RAM. This is kept, commented,
+// because the `CTL` words below are verified against generated `cnn.c` and are
+// the hard part of reviving it: the direct values against `kws20_demo`, the
+// FIFO values against `mobilefacenet-112`. An earlier revision of the register
+// spec had bit 0 inverted, which hangs the accelerator.
+//
+// They assume the configuration every shipped network uses: pipeline enabled,
+// memory-express weight loading, ready-select 0, quadrant 0 as master, and no
+// snoop, one-shot or fast FIFO.
+//
+// pub trait InputMode: crate::Sealed {
+//     const FIFO: bool;
+//     const STOP_SM: u32;
+//     const START_MASTER: u32;
+//     const START_OTHER: u32;
+//     const START_GO: u32;
+// }
+//
+// pub struct Direct;
+// pub struct Fifo;
+//
+// impl InputMode for Direct {
+//     const FIFO: bool = false;
+//     const STOP_SM: u32 = 0x0010_0008;
+//     const START_MASTER: u32 = 0x0010_0808;
+//     const START_OTHER: u32 = 0x0010_0809;
+//     const START_GO: u32 = 0x0010_0009;
+// }
+//
+// impl InputMode for Fifo {
+//     const FIFO: bool = true;
+//     const STOP_SM: u32 = 0x0010_8008;
+//     const START_MASTER: u32 = 0x0018_c808;
+//     const START_OTHER: u32 = 0x0018_c809;
+//     const START_GO: u32 = 0x0018_c809;
+// }
+//
+// FIFO mode sets FIFO_EN (bit 15) in every word and STREAM_EN (14) plus
+// STREAM_FIFO (19) once armed; its go word equals its non-master arm word
+// because it keeps EXT_SYNC (11), which direct mode drops.
 
 /// Streaming configuration for one layer.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -162,7 +162,7 @@ pub struct OutputRegion {
 }
 
 /// Hello gee.
-pub struct Network<'a, M: InputMode> {
+pub struct Network<'a> {
     pub layers: &'a [Layer],
     /// Index of the first hardware layer to execute
     pub first_layer: u8,
@@ -174,10 +174,9 @@ pub struct Network<'a, M: InputMode> {
     /// Where the input goes in data memory, before the network starts
     pub input: &'a [InputRegion],
     pub output: &'a [OutputRegion],
-    _mode: PhantomData<M>,
 }
 
-impl<'a, M: InputMode> Network<'a, M> {
+impl<'a> Network<'a> {
     #[allow(clippy::too_many_arguments)]
     pub const fn new(
         layers: &'a [Layer],
@@ -196,7 +195,6 @@ impl<'a, M: InputMode> Network<'a, M> {
             bias,
             input,
             output,
-            _mode: PhantomData,
         }
     }
 
@@ -223,85 +221,6 @@ impl<'a, M: InputMode> Network<'a, M> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// `Direct` passes the mode check. The `Fifo` half cannot be asserted
-    /// here: it is a const-eval panic, so a network built with it fails to
-    /// compile rather than failing a test.
-    #[test]
-    fn direct_passes_the_mode_check() {
-        let () = Direct::CHECK;
-    }
-
-    /// Verified against generated `cnn.c`: `kws20_demo` for direct mode,
-    /// `mobilefacenet-112` for FIFO. The spec records an earlier revision that
-    /// had bit 0 inverted, which would have hung the accelerator.
-    #[test]
-    fn control_words_match_the_generated_sources() {
-        assert_eq!(Direct::STOP_SM, 0x0010_0008);
-        assert_eq!(Direct::START_MASTER, 0x0010_0808);
-        assert_eq!(Direct::START_OTHER, 0x0010_0809);
-        assert_eq!(Direct::START_GO, 0x0010_0009);
-
-        assert_eq!(Fifo::STOP_SM, 0x0010_8008);
-        assert_eq!(Fifo::START_MASTER, 0x0018_c808);
-        assert_eq!(Fifo::START_OTHER, 0x0018_c809);
-        assert_eq!(Fifo::START_GO, 0x0018_c809);
-    }
-
-    /// The polarity that matters: the master is armed with `CNN_EN` clear and
-    /// every other quadrant with it set. Inverting this hangs the network.
-    #[test]
-    fn master_arms_with_enable_clear() {
-        for (master, other) in [
-            (Direct::START_MASTER, Direct::START_OTHER),
-            (Fifo::START_MASTER, Fifo::START_OTHER),
-        ] {
-            assert_eq!(master & 1, 0, "master must arm with CNN_EN clear");
-            assert_eq!(other & 1, 1, "other quadrants must arm with CNN_EN set");
-            assert_eq!(master | 1, other, "the two differ only in CNN_EN");
-        }
-    }
-
-    /// Both modes keep the APB clock alive so registers stay readable while
-    /// the state machine runs, and both use memory-express weight loading.
-    #[test]
-    fn every_control_word_keeps_clocks_on() {
-        for word in [
-            Direct::STOP_SM,
-            Direct::START_MASTER,
-            Direct::START_OTHER,
-            Direct::START_GO,
-            Fifo::STOP_SM,
-            Fifo::START_MASTER,
-            Fifo::START_OTHER,
-            Fifo::START_GO,
-        ] {
-            assert_ne!(word & (1 << 3), 0, "{word:#010x} has CLK_EN clear");
-            assert_ne!(word & (1 << 20), 0, "{word:#010x} has MEXPRESS clear");
-        }
-    }
-
-    /// FIFO mode sets the FIFO enable everywhere and streaming only once
-    /// armed; direct mode sets neither.
-    #[test]
-    fn fifo_mode_sets_the_fifo_bits() {
-        assert_ne!(Fifo::STOP_SM & (1 << 15), 0, "FIFO_EN");
-        assert_eq!(Direct::STOP_SM & (1 << 15), 0);
-
-        assert_ne!(Fifo::START_MASTER & (1 << 14), 0, "STREAM_EN");
-        assert_ne!(Fifo::START_MASTER & (1 << 19), 0, "STREAM_FIFO");
-        assert_eq!(Direct::START_MASTER & ((1 << 14) | (1 << 19)), 0);
-    }
-
-    /// Direct mode drops `EXT_SYNC` on the go word; FIFO mode keeps it, which
-    /// is why its go word equals its non-master arm word.
-    #[test]
-    fn go_word_differs_between_modes() {
-        assert_eq!(Direct::START_GO & (1 << 11), 0);
-        assert_ne!(Fifo::START_GO & (1 << 11), 0);
-        assert_eq!(Fifo::START_GO, Fifo::START_OTHER);
-        assert_ne!(Direct::START_GO, Direct::START_OTHER);
-    }
 
     fn synthetic_layer() -> Layer {
         Layer {
@@ -365,12 +284,12 @@ mod tests {
     #[test]
     fn network_reports_streaming_and_bias() {
         const LAYERS: [Layer; 0] = [];
-        let net: Network<Direct> = Network::new(&LAYERS, 0, 0, &[], None, &[], &[]);
+        let net: Network = Network::new(&LAYERS, 0, 0, &[], None, &[], &[]);
         assert!(!net.is_streaming());
         assert!(!net.has_bias());
 
         let layers = [synthetic_layer()];
-        let net: Network<Direct> = Network::new(&layers, 0, 0, &[], None, &[], &[]);
+        let net: Network = Network::new(&layers, 0, 0, &[], None, &[], &[]);
         assert!(!net.is_streaming());
 
         let mut streaming = synthetic_layer();
@@ -381,7 +300,7 @@ mod tests {
             rollover: Fmax::from_bits(0x148),
         });
         let layers = [streaming];
-        let net: Network<Fifo> = Network::new(&layers, 0, 0, &[], None, &[], &[]);
+        let net: Network = Network::new(&layers, 0, 0, &[], None, &[], &[]);
         assert!(net.is_streaming());
     }
     /// `kws20_demo` produces 21 words of 32-bit output from six regions:
@@ -426,7 +345,7 @@ mod tests {
                 len: 1,
             },
         ];
-        let net: Network<Direct> = Network::new(&[], 0, 0, &[], None, &[], &OUTPUT);
+        let net: Network = Network::new(&[], 0, 0, &[], None, &[], &OUTPUT);
         assert_eq!(net.output_words(), 21);
 
         // mobilefacenet-112: 64 channels of 8-bit output as 16 single words,
@@ -437,7 +356,7 @@ mod tests {
             word: 10240,
             len: 1,
         }; 16];
-        let net: Network<Fifo> = Network::new(&[], 0, 0, &[], None, &[], &BYTES);
+        let net: Network = Network::new(&[], 0, 0, &[], None, &[], &BYTES);
         assert_eq!(net.output_words(), 16);
         assert_eq!(net.output_words() * 4, 64);
     }
@@ -452,10 +371,10 @@ mod tests {
             word: 960,
             len: 7200,
         });
-        let net: Network<Direct> = Network::new(&[], 0, 0, &[], None, &regions, &[]);
+        let net: Network = Network::new(&[], 0, 0, &[], None, &regions, &[]);
         assert_eq!(net.input_words(), 12 * 7200);
 
-        let net: Network<Direct> = Network::new(&[], 0, 0, &[], None, &[], &[]);
+        let net: Network = Network::new(&[], 0, 0, &[], None, &[], &[]);
         assert_eq!(net.input_words(), 0);
     }
 

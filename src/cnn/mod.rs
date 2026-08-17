@@ -13,9 +13,8 @@
 //!        -> start -> wait -> read_u32
 //! ```
 //!
-//! Direct input only. FIFO input and streaming layers are not implemented:
-//! programming a `Network<`[`Fifo`]`>` fails to compile, and
-//! [`Network::validate`] rejects what it can see of them.
+//! Direct input only. FIFO input and streaming layers are not implemented; see
+//! the note at the top of [`network`] if they are ever wanted back.
 //!
 //! [`regs::Reg::write`] is one `write_volatile` at a computed address, the same
 //! mechanism as the SDK's raw C pokes with types above it.
@@ -33,9 +32,7 @@ mod golden;
 
 pub use boost::{BoostPolarity, CnnBoost};
 pub use config::{emit_layer, LayerSink, MASTER_QUADRANT};
-pub use network::{
-    Direct, Fifo, InputMode, InputRegion, Layer, Network, OutputRegion, Stream, WeightRegion,
-};
+pub use network::{InputRegion, Layer, Network, OutputRegion, Stream, WeightRegion};
 pub use regs::{LayerReg, LayerRegs, Quadrant, Reg};
 pub use validate::Invalid;
 
@@ -274,6 +271,14 @@ pub const fn ack_mask(streaming: bool) -> u32 {
     mask
 }
 
+/// `CTL` words for the direct input path, verified against generated `cnn.c`.
+/// The master arms with `CNN_EN` clear and every other quadrant with it set;
+/// inverting that hangs the accelerator.
+const STOP_SM: u32 = 0x0010_0008;
+const START_MASTER: u32 = 0x0010_0808;
+const START_OTHER: u32 = 0x0010_0809;
+const START_GO: u32 = 0x0010_0009;
+
 /// SRAM control word.
 const SRAM_CONTROL: u32 = 0x0000_040e;
 
@@ -304,8 +309,7 @@ macro_rules! each_quadrant {
 
 impl Cnn<Enabled> {
     /// Initialize the accelerator
-    pub fn init<M: InputMode>(&mut self, network: &Network<M>) {
-        let () = M::CHECK;
+    pub fn init(&mut self, network: &Network) {
         let no_pipeline = matches!(self.pipeline, Pipeline::Disabled);
 
         // clk_en and pipeline selection
@@ -337,7 +341,7 @@ impl Cnn<Enabled> {
             q.test().write(|w| unsafe { w.bits(0) });
         });
 
-        let stop = M::STOP_SM | self.pipeline.ctl_bits();
+        let stop = STOP_SM | self.pipeline.ctl_bits();
         each_quadrant!(self, |q| {
             q.ctl().write(|w| unsafe { w.bits(stop) });
             q.lcnt().write(|w| unsafe {
@@ -350,7 +354,7 @@ impl Cnn<Enabled> {
     }
 
     /// Load a network's weights into kernel memory.
-    pub fn load_weights<M: InputMode>(&mut self, network: &Network<M>) {
+    pub fn load_weights(&mut self, network: &Network) {
         for region in network.weights {
             memory::write_kernel(
                 region.quadrant,
@@ -362,7 +366,7 @@ impl Cnn<Enabled> {
     }
 
     /// Load a network's bias values, if it has any.
-    pub fn load_bias<M: InputMode>(&mut self, network: &Network<M>) {
+    pub fn load_bias(&mut self, network: &Network) {
         let Some(tables) = network.bias else {
             return;
         };
@@ -372,30 +376,29 @@ impl Cnn<Enabled> {
     }
 
     /// Start inference.
-    pub fn start<M: InputMode>(&mut self, network: &Network<M>) {
-        let () = M::CHECK;
+    pub fn start(&mut self, network: &Network) {
         debug_assert!(
-            !network.is_streaming() || M::FIFO,
-            "a streaming network requires FIFO input"
+            !network.is_streaming(),
+            "streaming layers require FIFO input, which is not implemented"
         );
 
         let pipeline = self.pipeline.ctl_bits();
         self.q0
             .ctl()
-            .write(|w| unsafe { w.bits(M::START_MASTER | pipeline) });
+            .write(|w| unsafe { w.bits(START_MASTER | pipeline) });
         self.q1
             .ctl()
-            .write(|w| unsafe { w.bits(M::START_OTHER | pipeline) });
+            .write(|w| unsafe { w.bits(START_OTHER | pipeline) });
         self.q2
             .ctl()
-            .write(|w| unsafe { w.bits(M::START_OTHER | pipeline) });
+            .write(|w| unsafe { w.bits(START_OTHER | pipeline) });
         self.q3
             .ctl()
-            .write(|w| unsafe { w.bits(M::START_OTHER | pipeline) });
+            .write(|w| unsafe { w.bits(START_OTHER | pipeline) });
 
         self.q0
             .ctl()
-            .write(|w| unsafe { w.bits(M::START_GO | pipeline) });
+            .write(|w| unsafe { w.bits(START_GO | pipeline) });
     }
 
     /// Whether the accelerator has signalled completion.
@@ -408,7 +411,7 @@ impl Cnn<Enabled> {
     }
 
     /// Acknowledge the completion interrupt on every quadrant.
-    pub fn acknowledge<M: InputMode>(&mut self, network: &Network<M>) {
+    pub fn acknowledge(&mut self, network: &Network) {
         let mask = ack_mask(network.is_streaming());
         self.q0
             .ctl()
@@ -435,7 +438,7 @@ impl Cnn<Enabled> {
     }
 
     /// Place a network's 32-bit input in data memory. Must precede `start`.
-    pub fn write_u32(&mut self, network: &Network<Direct>, src: &[u32]) -> usize {
+    pub fn write_u32(&mut self, network: &Network, src: &[u32]) -> usize {
         let needed = network.input_words();
         assert!(
             src.len() >= needed,
@@ -463,7 +466,7 @@ impl Cnn<Enabled> {
     /// Only `(N, 1, 1)` shapes. Anything with spatial extent, an image say, is
     /// one word per pixel and would need interleaving from CHW first.
     /// TODO: handle spatial 8-bit input
-    pub fn write_u8(&mut self, network: &Network<Direct>, src: &[u8]) -> usize {
+    pub fn write_u8(&mut self, network: &Network, src: &[u8]) -> usize {
         let needed = network.input_words() * 4;
         assert!(
             src.len() >= needed,
@@ -490,7 +493,7 @@ impl Cnn<Enabled> {
     }
 
     /// Read a network's 32-bit output.
-    pub fn read_u32<M: InputMode>(&self, network: &Network<M>, dst: &mut [u32]) -> usize {
+    pub fn read_u32(&self, network: &Network, dst: &mut [u32]) -> usize {
         let needed = network.output_words();
         assert!(
             dst.len() >= needed,
@@ -518,7 +521,7 @@ impl Cnn<Enabled> {
     /// Only `(N, 1, 1)` shapes. Anything with spatial extent comes back
     /// pixel-major, not CHW, and would need de-interleaving.
     /// TODO: handle spatial 8-bit output
-    pub fn read_u8<M: InputMode>(&self, network: &Network<M>, dst: &mut [u8]) -> usize {
+    pub fn read_u8(&self, network: &Network, dst: &mut [u8]) -> usize {
         let needed = network.output_words() * 4;
         assert!(
             dst.len() >= needed,
@@ -768,57 +771,39 @@ mod tests {
         }
     }
 
-    /// The generator folds `NO_PIPELINE` into the stop-SM and arm words, so it
-    /// cannot be written once and left alone.
+    /// The arm-and-go sequence, cross-checked against `cnn_start` in
+    /// `kws20_demo`. The master arms with `CNN_EN` clear and the others with it
+    /// set; inverting that hangs the accelerator. Both words keep the APB clock
+    /// alive (bit 3) and use memory-express weight loading (bit 20).
+    #[test]
+    fn start_sequence_matches_the_generated_sources() {
+        assert_eq!(STOP_SM, 0x0010_0008);
+        assert_eq!(START_MASTER, 0x0010_0808);
+        assert_eq!(START_OTHER, 0x0010_0809);
+        assert_eq!(START_GO, 0x0010_0009);
+
+        assert_eq!(START_MASTER & 1, 0, "master must arm with CNN_EN clear");
+        assert_eq!(START_MASTER | 1, START_OTHER, "they differ only in CNN_EN");
+        for word in [STOP_SM, START_MASTER, START_OTHER, START_GO] {
+            assert_ne!(word & (1 << 3), 0, "{word:#010x} has CLK_EN clear");
+            assert_ne!(word & (1 << 20), 0, "{word:#010x} has MEXPRESS clear");
+        }
+    }
+
+    /// The generator folds `NO_PIPELINE` into every control word it builds, so
+    /// it cannot be written once at init and left alone.
     #[test]
     fn pipeline_contributes_to_every_control_word() {
         assert_eq!(Pipeline::Enabled.ctl_bits(), 0);
         assert_eq!(Pipeline::Disabled.ctl_bits(), 1 << 5);
 
-        // The published constants are the pipelined case.
-        for word in [
-            network::Direct::STOP_SM,
-            network::Direct::START_MASTER,
-            network::Fifo::STOP_SM,
-            network::Fifo::START_MASTER,
-        ] {
+        let p = Pipeline::Disabled.ctl_bits();
+        for word in [STOP_SM, START_MASTER, START_OTHER, START_GO] {
             assert_eq!(word & (1 << 5), 0, "{word:#010x} already has NO_PIPELINE");
         }
-
-        assert_eq!(
-            network::Direct::STOP_SM | Pipeline::Disabled.ctl_bits(),
-            0x0010_0028
-        );
-        assert_eq!(
-            network::Fifo::STOP_SM | Pipeline::Disabled.ctl_bits(),
-            0x0010_8028
-        );
-    }
-
-    /// The arm-and-go sequence, cross-checked against `cnn_start`.
-    #[test]
-    fn start_sequence_matches_the_generated_sources() {
-        let p = Pipeline::Enabled.ctl_bits();
-
-        // kws20_demo, direct input.
-        assert_eq!(network::Direct::START_MASTER | p, 0x0010_0808);
-        assert_eq!(network::Direct::START_OTHER | p, 0x0010_0809);
-        assert_eq!(network::Direct::START_GO | p, 0x0010_0009);
-
-        // mobilefacenet-112, FIFO input.
-        assert_eq!(network::Fifo::START_MASTER | p, 0x0018_c808);
-        assert_eq!(network::Fifo::START_OTHER | p, 0x0018_c809);
-        assert_eq!(network::Fifo::START_GO | p, 0x0018_c809);
-    }
-
-    /// Disabling the pipeline changes every word in the start sequence, not
-    /// just the one written at init.
-    #[test]
-    fn start_sequence_carries_the_pipeline_bit() {
-        let p = Pipeline::Disabled.ctl_bits();
-        assert_eq!(network::Direct::START_MASTER | p, 0x0010_0828);
-        assert_eq!(network::Direct::START_GO | p, 0x0010_0029);
-        assert_eq!(network::Fifo::START_OTHER | p, 0x0018_c829);
+        assert_eq!(STOP_SM | p, 0x0010_0028);
+        assert_eq!(START_MASTER | p, 0x0010_0828);
+        assert_eq!(START_GO | p, 0x0010_0029);
     }
 
     /// The two acknowledge masks the generator emits. A third form exists for
@@ -838,8 +823,7 @@ mod tests {
     /// network resumes exactly where the go left it.
     #[test]
     fn stop_and_resume_toggle_the_enable_bit() {
-        assert_eq!(network::Direct::START_GO & 1, 1);
-        assert_eq!(network::Fifo::START_GO & 1, 1);
+        assert_eq!(START_GO & 1, 1);
         assert_ne!(ack_mask(false) & 1, 0, "the ISR also clears CNN_EN");
     }
 

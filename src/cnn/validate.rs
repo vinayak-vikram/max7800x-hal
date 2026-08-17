@@ -3,7 +3,7 @@
 use super::config::{emit_layer, LayerSink, MASTER_QUADRANT};
 use super::fields::reserved_bits;
 use super::memory::{bias_fits, kernel_burst_fits, DATA_WINDOW_BYTES};
-use super::network::{InputMode, Layer, Network};
+use super::network::{Layer, Network};
 use super::regs::LayerReg;
 use super::regs::{DATA_INSTANCES_PER_QUADRANT, MAX_LAYERS, PROCESSORS_PER_QUADRANT, QUADRANTS};
 
@@ -39,7 +39,7 @@ pub enum Invalid {
     },
 }
 
-impl<M: InputMode> Network<'_, M> {
+impl Network<'_> {
     /// Check the network against everything knowable without hardware
     pub fn validate(&self) -> Result<(), Invalid> {
         self.check_layer_table()?;
@@ -193,9 +193,9 @@ impl LayerSink for ReservedCheck<'_> {
 mod tests {
     use super::*;
     use crate::cnn::fields::*;
-    use crate::cnn::network::{Direct, InputRegion, Layer, OutputRegion, WeightRegion};
+    use crate::cnn::network::{InputRegion, Layer, OutputRegion, WeightRegion};
 
-    fn net(layers: &[Layer]) -> Network<'_, Direct> {
+    fn net(layers: &[Layer]) -> Network<'_> {
         Network::new(
             layers,
             0,
@@ -325,7 +325,7 @@ mod tests {
     #[test]
     fn layer_bounds_are_checked() {
         let layers = [Layer::default(), Layer::default()];
-        let n: Network<Direct> = Network::new(&layers, 1, 0, &[], None, &[], &[]);
+        let n: Network = Network::new(&layers, 1, 0, &[], None, &[], &[]);
         assert_eq!(
             n.validate(),
             Err(Invalid::LayerRange {
@@ -335,7 +335,7 @@ mod tests {
             })
         );
 
-        let n: Network<Direct> = Network::new(&layers, 0, 2, &[], None, &[], &[]);
+        let n: Network = Network::new(&layers, 0, 2, &[], None, &[], &[]);
         assert!(matches!(n.validate(), Err(Invalid::LayerRange { .. })));
     }
 
@@ -349,7 +349,7 @@ mod tests {
             offset: 0,
             data: &DATA,
         }];
-        let n: Network<Direct> = Network::new(&[], 0, 0, &bad, None, &[], &[]);
+        let n: Network = Network::new(&[], 0, 0, &bad, None, &[], &[]);
         assert_eq!(n.validate(), Err(Invalid::WeightTarget { region: 0 }));
 
         // One word short of the window is fine; the window itself is not.
@@ -359,7 +359,7 @@ mod tests {
             offset: crate::cnn::memory::KERNEL_WINDOW_BYTES - 4,
             data: &DATA,
         }];
-        let n: Network<Direct> = Network::new(&[], 0, 0, &bad, None, &[], &[]);
+        let n: Network = Network::new(&[], 0, 0, &bad, None, &[], &[]);
         assert_eq!(n.validate(), Err(Invalid::WeightOverrun { region: 0 }));
     }
 
@@ -371,7 +371,7 @@ mod tests {
             word: 0,
             len: 1,
         }];
-        let n: Network<Direct> = Network::new(&[], 0, 0, &[], None, &bad, &[]);
+        let n: Network = Network::new(&[], 0, 0, &[], None, &bad, &[]);
         assert_eq!(
             n.validate(),
             Err(Invalid::DataTarget {
@@ -386,7 +386,7 @@ mod tests {
             word: 32767,
             len: 4,
         }];
-        let n: Network<Direct> = Network::new(&[], 0, 0, &[], None, &[], &bad);
+        let n: Network = Network::new(&[], 0, 0, &[], None, &[], &bad);
         assert_eq!(
             n.validate(),
             Err(Invalid::DataOverrun {
@@ -400,7 +400,7 @@ mod tests {
     fn bias_tables_are_bounds_checked() {
         const BIG: [u8; 2049] = [0; 2049];
         const TABLES: [&[u8]; 4] = [&[], &BIG, &[], &[]];
-        let n: Network<Direct> = Network::new(&[], 0, 0, &[], Some(&TABLES), &[], &[]);
+        let n: Network = Network::new(&[], 0, 0, &[], Some(&TABLES), &[], &[]);
         assert_eq!(n.validate(), Err(Invalid::BiasOverrun { quadrant: 1 }));
     }
 

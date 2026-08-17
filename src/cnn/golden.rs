@@ -2,7 +2,7 @@
 
 use super::config::{emit_layer, LayerSink};
 use super::fields::*;
-use super::network::{Direct, Layer, Network};
+use super::network::{Layer, Network};
 use super::regs::{LayerReg, ALL_LAYER_REGS, QUADRANTS};
 
 /// `kws20_demo`: 9 layers, no bias, conv1d
@@ -239,7 +239,7 @@ fn every_layer_validates() {
         for_each_block(src, |block| {
             let layer = layer_from(block);
             let layers = [layer];
-            let net: Network<Direct> = Network::new(&layers, 0, 0, &[], None, &[], &[]);
+            let net: Network = Network::new(&layers, 0, 0, &[], None, &[], &[]);
             assert_eq!(
                 net.validate(),
                 Ok(()),
