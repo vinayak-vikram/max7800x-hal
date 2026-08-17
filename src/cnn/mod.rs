@@ -2,6 +2,22 @@
 //!
 //! The datasheet is gee.
 //!
+//! Four CNNx16 quadrants, 16 processors each, 128 layers. A [`Network`] is a
+//! `const` descriptor produced by `tools/cnn-gen.py`; nothing here computes a
+//! register value.
+//!
+//! Call order, matching the generated C:
+//!
+//! ```text
+//! enable -> init -> load_weights -> load_bias -> configure -> write_u32
+//!        -> start -> wait -> read_u32
+//! ```
+//!
+//! Direct input only. FIFO input and streaming layers are not implemented, and
+//! [`Network::validate`] rejects what it can see of them.
+//!
+//! [`regs::Reg::write`] is one `write_volatile` at a computed address, the same
+//! mechanism as the SDK's raw C pokes with types above it.
 
 pub mod boost;
 pub mod config;
