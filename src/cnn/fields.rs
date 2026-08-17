@@ -64,8 +64,8 @@ macro_rules! flag {
     };
 }
 
-/// Next layer
 register! {
+    /// Next layer
     Nxtlyr
 }
 
@@ -87,13 +87,13 @@ impl core::fmt::Debug for Nxtlyr {
     }
 }
 
-/// Row count
 register! {
+    /// Row count
     Rcnt
 }
 
-/// Column count
 register! {
+    /// Column count
     Ccnt
 }
 
@@ -126,13 +126,13 @@ macro_rules! count_register {
 count_register!(Rcnt);
 count_register!(Ccnt);
 
-/// Pooling rows
 register! {
+    /// Pooling rows
     Prcnt
 }
 
-/// Pooling columns
 register! {
+    /// Pooling columns
     Pccnt
 }
 
@@ -157,8 +157,8 @@ macro_rules! pool_register {
 pool_register!(Prcnt);
 pool_register!(Pccnt);
 
-/// Pooling and multi-pass stride
 register! {
+    /// Pooling and multi-pass stride
     Stride
 }
 
@@ -176,8 +176,8 @@ impl core::fmt::Debug for Stride {
     }
 }
 
-/// Data SRAM write pointer
 register! {
+    /// Data SRAM write pointer
     WptrBase
 }
 
@@ -210,28 +210,28 @@ macro_rules! value_register {
     };
 }
 
-/// Write pointer time slot offset
 value_register! {
+    /// Write pointer time slot offset
     WptrToffs
 }
 
-/// Write pointer mask offset
 value_register! {
+    /// Write pointer mask offset
     WptrMoffs
 }
 
-/// Write pointer multi-pass channel offset
 value_register! {
+    /// Write pointer multi-pass channel offset
     WptrChoffs
 }
 
-/// Data SRAM read pinter
 value_register! {
+    /// Data SRAM read pinter
     RptrBase
 }
 
-/// Layer control
 register! {
+    /// Layer control
     Lctl
 }
 
@@ -273,8 +273,8 @@ impl core::fmt::Debug for Lctl {
     }
 }
 
-/// Layer control 2
 register! {
+    /// Layer control 2
     Lctl2
 }
 
@@ -294,8 +294,8 @@ impl core::fmt::Debug for Lctl2 {
     }
 }
 
-/// 1D convolution & element-wise configuration
 register! {
+    /// 1D convolution & element-wise configuration
     Oned
 }
 
@@ -327,9 +327,9 @@ impl core::fmt::Debug for Oned {
     }
 }
 
-/// Last mask memory word
-/// Not written for passthrough layers
 register! {
+    /// Last mask memory word
+    /// Not written for passthrough layers
     Mcnt1
 }
 
@@ -345,8 +345,8 @@ impl core::fmt::Debug for Mcnt1 {
     }
 }
 
-/// First mask memory word
 register! {
+    /// First mask memory word
     Mcnt2
 }
 
@@ -362,8 +362,8 @@ impl core::fmt::Debug for Mcnt2 {
     }
 }
 
-/// Output channel count minus one
 register! {
+    /// Output channel count minus one
     Ochan
 }
 
@@ -379,8 +379,8 @@ impl core::fmt::Debug for Ochan {
     }
 }
 
-/// TRAM pointer
 register! {
+    /// TRAM pointer
     Tptr
 }
 
@@ -398,8 +398,8 @@ impl core::fmt::Debug for Tptr {
     }
 }
 
-/// Processor and mask enables
 register! {
+    /// Processor and mask enables
     Ena
 }
 
@@ -417,8 +417,8 @@ impl core::fmt::Debug for Ena {
     }
 }
 
-/// Post processing.
 register! {
+    /// Post processing.
     Post
 }
 
@@ -621,8 +621,8 @@ impl Activation {
     }
 }
 
-/// Stream processing start
 register! {
+    /// Stream processing start
     Stream1
 }
 
@@ -640,8 +640,8 @@ impl core::fmt::Debug for Stream1 {
     }
 }
 
-/// Stream processing delta
 register! {
+    /// Stream processing delta
     Stream2
 }
 
@@ -661,8 +661,8 @@ impl core::fmt::Debug for Stream2 {
     }
 }
 
-/// Ring buffer size
 register! {
+    /// Ring buffer size
     Fmax
 }
 

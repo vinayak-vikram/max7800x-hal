@@ -76,6 +76,9 @@ pub const fn kernel_capacity(processor: u8) -> u32 {
 }
 
 /// Arm the auto-incrementing kernel write pointer
+///
+/// # Safety
+/// `addr` must be a [`kernel_addr`] for a quadrant the caller owns.
 #[inline]
 pub unsafe fn arm_kernel_ptr(addr: u32) {
     ((addr | 1) as *mut u8).write_volatile(0x01);
