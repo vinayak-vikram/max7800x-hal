@@ -46,7 +46,7 @@ cnn.load_bias(&NETWORK);
 cnn.configure(&NETWORK);
 
 cnn.write_u32(&NETWORK, &samples);
-cnn.start(&NETWORK);
+cnn.start();
 cnn.wait();
 cnn.read_u32(&NETWORK, &mut out);
 ```

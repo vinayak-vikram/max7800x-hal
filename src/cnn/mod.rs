@@ -32,7 +32,7 @@ mod golden;
 
 pub use boost::{BoostPolarity, CnnBoost};
 pub use config::{emit_layer, LayerSink, MASTER_QUADRANT};
-pub use network::{InputRegion, Layer, Network, OutputRegion, Stream, WeightRegion};
+pub use network::{InputRegion, Layer, Network, OutputRegion, WeightRegion};
 pub use regs::{LayerReg, LayerRegs, Quadrant, Reg};
 pub use validate::Invalid;
 
@@ -263,12 +263,8 @@ impl Cnn<Disabled> {
 }
 
 /// CTL bits a completion interrupt handler must clear.
-pub const fn ack_mask(streaming: bool) -> u32 {
-    let mut mask = (1 << 12) | 1;
-    if streaming {
-        mask |= 1 << 14;
-    }
-    mask
+pub const fn ack_mask() -> u32 {
+    (1 << 12) | 1
 }
 
 /// `CTL` words for the direct input path, verified against generated `cnn.c`.
@@ -376,12 +372,7 @@ impl Cnn<Enabled> {
     }
 
     /// Start inference.
-    pub fn start(&mut self, network: &Network) {
-        debug_assert!(
-            !network.is_streaming(),
-            "streaming layers require FIFO input, which is not implemented"
-        );
-
+    pub fn start(&mut self) {
         let pipeline = self.pipeline.ctl_bits();
         self.q0
             .ctl()
@@ -411,8 +402,8 @@ impl Cnn<Enabled> {
     }
 
     /// Acknowledge the completion interrupt on every quadrant.
-    pub fn acknowledge(&mut self, network: &Network) {
-        let mask = ack_mask(network.is_streaming());
+    pub fn acknowledge(&mut self) {
+        let mask = ack_mask();
         self.q0
             .ctl()
             .modify(|r, w| unsafe { w.bits(r.bits() & !mask) });
@@ -811,12 +802,11 @@ mod tests {
     #[test]
     fn acknowledge_masks_match_the_generated_isr() {
         // kws20_demo: `&= ~((1 << 12) | 1)`
-        assert_eq!(ack_mask(false), (1 << 12) | 1);
-        // mobilefacenet-112: `&= ~((1 << 12) | (1 << 14) | 1)`
-        assert_eq!(ack_mask(true), (1 << 12) | (1 << 14) | 1);
+        // A streaming network also clears STREAM_EN, bit 14, which this HAL
+        // never sets.
+        assert_eq!(ack_mask(), (1 << 12) | 1);
         // Clearing DONE is what makes the next completion detectable.
-        assert_ne!(ack_mask(false) & (1 << 12), 0);
-        assert_ne!(ack_mask(true) & (1 << 12), 0);
+        assert_ne!(ack_mask() & (1 << 12), 0);
     }
 
     /// `stop` and `resume` toggle the same bit the go word sets, so a stopped
@@ -824,7 +814,7 @@ mod tests {
     #[test]
     fn stop_and_resume_toggle_the_enable_bit() {
         assert_eq!(START_GO & 1, 1);
-        assert_ne!(ack_mask(false) & 1, 0, "the ISR also clears CNN_EN");
+        assert_ne!(ack_mask() & 1, 0, "the ISR also clears CNN_EN");
     }
 
     /// `LCNT_MAX` takes hardware layer indices, so the last index is one less

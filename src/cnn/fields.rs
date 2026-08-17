@@ -606,69 +606,6 @@ impl Activation {
     }
 }
 
-register! {
-    /// Stream processing start
-    Stream1
-}
-
-impl Stream1 {
-    field!(isval, 0, 15);
-    flag!(fifo_go, 25);
-    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
-    pub const DECLARED_BITS: u32 = 0x02007fff;
-}
-
-impl core::fmt::Debug for Stream1 {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Stream1")
-            .field("isval", &self.isval())
-            .field("fifo_go", &self.fifo_go())
-            .finish()
-    }
-}
-
-register! {
-    /// Stream processing delta
-    Stream2
-}
-
-impl Stream2 {
-    field!(invol, 0, 4);
-    field!(dsval1, 4, 5);
-    field!(dsval2, 16, 14);
-    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
-    pub const DECLARED_BITS: u32 = 0x3fff01ff;
-}
-
-impl core::fmt::Debug for Stream2 {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Stream2")
-            .field("invol", &self.invol())
-            .field("dsval1", &self.dsval1())
-            .field("dsval2", &self.dsval2())
-            .finish()
-    }
-}
-
-register! {
-    /// Ring buffer size
-    Fmax
-}
-
-impl Fmax {
-    field!(fbuf_max, 0, 18);
-    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
-    pub const DECLARED_BITS: u32 = 0x0003ffff;
-}
-
-impl core::fmt::Debug for Fmax {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Fmax")
-            .field("fbuf_max", &self.fbuf_max())
-            .finish()
-    }
-}
-
 /// its beautiful 🥹
 pub trait LayerRegister: Copy + core::fmt::Debug {
     const REG: LayerReg;

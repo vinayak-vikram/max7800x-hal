@@ -1,8 +1,8 @@
 //! Full network descriptor
 
 use super::fields::{
-    Ccnt, Ena, Fmax, Lctl, Lctl2, Mcnt1, Mcnt2, Nxtlyr, Ochan, Oned, Pccnt, Post, Prcnt, Rcnt,
-    RptrBase, Stream1, Stream2, Stride, Tptr, WptrBase, WptrChoffs, WptrMoffs, WptrToffs,
+    Ccnt, Ena, Lctl, Lctl2, Mcnt1, Mcnt2, Nxtlyr, Ochan, Oned, Pccnt, Post, Prcnt, Rcnt, RptrBase,
+    Stride, Tptr, WptrBase, WptrChoffs, WptrMoffs, WptrToffs,
 };
 use super::regs::QUADRANTS;
 
@@ -49,15 +49,6 @@ use super::regs::QUADRANTS;
 // STREAM_FIFO (19) once armed; its go word equals its non-master arm word
 // because it keeps EXT_SYNC (11), which direct mode drops.
 
-/// Streaming configuration for one layer.
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Stream {
-    pub slot: u8,
-    pub start: Stream1,
-    pub delta: Stream2,
-    pub rollover: Fmax,
-}
-
 /// One hardware layer.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct Layer {
@@ -83,7 +74,6 @@ pub struct Layer {
     pub wptr: [WptrBase; QUADRANTS as usize],
     pub ena: [Ena; QUADRANTS as usize],
 
-    pub stream: Option<Stream>,
     /// program into master quadrant only?
     pub master_only: bool,
 }
@@ -112,7 +102,6 @@ impl Layer {
             post: [Post::new(); QUADRANTS as usize],
             wptr: [WptrBase::new(); QUADRANTS as usize],
             ena: [Ena::new(); QUADRANTS as usize],
-            stream: None,
             master_only: false,
         }
     }
@@ -199,10 +188,6 @@ impl<'a> Network<'a> {
     }
 
     /// Whether any layer streams. Streaming requires FIFO input.
-    pub fn is_streaming(&self) -> bool {
-        self.layers.iter().any(|l| l.stream.is_some())
-    }
-
     pub const fn has_bias(&self) -> bool {
         self.bias.is_some()
     }
@@ -254,7 +239,6 @@ mod tests {
             ],
             wptr: [WptrBase::from_bits(0x2000); 4],
             ena: [Ena::from_bits(1), Ena::new(), Ena::new(), Ena::new()],
-            stream: None,
             master_only: true,
         }
     }
@@ -281,28 +265,6 @@ mod tests {
         assert!(layer.mcnt1.is_none());
     }
 
-    #[test]
-    fn network_reports_streaming_and_bias() {
-        const LAYERS: [Layer; 0] = [];
-        let net: Network = Network::new(&LAYERS, 0, 0, &[], None, &[], &[]);
-        assert!(!net.is_streaming());
-        assert!(!net.has_bias());
-
-        let layers = [synthetic_layer()];
-        let net: Network = Network::new(&layers, 0, 0, &[], None, &[], &[]);
-        assert!(!net.is_streaming());
-
-        let mut streaming = synthetic_layer();
-        streaming.stream = Some(Stream {
-            slot: 0,
-            start: Stream1::from_bits(0x147),
-            delta: Stream2::from_bits(0x0142_0022),
-            rollover: Fmax::from_bits(0x148),
-        });
-        let layers = [streaming];
-        let net: Network = Network::new(&layers, 0, 0, &[], None, &[], &[]);
-        assert!(net.is_streaming());
-    }
     /// `kws20_demo` produces 21 words of 32-bit output from six regions:
     /// five of four words and one of one.
     #[test]

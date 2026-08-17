@@ -85,49 +85,6 @@ impl super::Cnn<crate::gcr::clocks::Enabled> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cnn::fields::*;
-    use crate::cnn::network::Stream;
-    use crate::cnn::LayerReg;
-
-    /// Records what a layer emits for debug reasons.
-    #[derive(Default)]
-    struct Recorder {
-        writes: [(u32, u32); 24],
-        len: usize,
-    }
-
-    impl LayerSink for Recorder {
-        fn write(&mut self, reg: LayerReg, bits: u32) {
-            self.writes[self.len] = (reg as u32, bits);
-            self.len += 1;
-        }
-    }
-
-    impl Recorder {
-        fn of(layer: &Layer, quadrant: u8) -> Self {
-            let mut r = Self::default();
-            emit_layer(&mut r, layer, quadrant);
-            r
-        }
-    }
-
-    /// Streaming registers live outside the per-layer file, so they are not
-    /// part of this sequence.
-    #[test]
-    fn streaming_is_not_emitted_here() {
-        let mut layer = Layer {
-            rows: Rcnt::from_bits(0x0002_007f),
-            ..Layer::default()
-        };
-        let without = Recorder::of(&layer, 0).len;
-        layer.stream = Some(Stream {
-            slot: 0,
-            start: Stream1::from_bits(0x147),
-            delta: Stream2::from_bits(0x0142_0022),
-            rollover: Fmax::from_bits(0x148),
-        });
-        assert_eq!(Recorder::of(&layer, 0).len, without);
-    }
 
     #[test]
     fn master_quadrant_is_zero() {
