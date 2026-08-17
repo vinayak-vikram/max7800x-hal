@@ -459,6 +459,10 @@ impl Cnn<Enabled> {
     }
 
     /// Place a network's 8-bit input in data memory, four channels per word.
+    ///
+    /// Only `(N, 1, 1)` shapes. Anything with spatial extent, an image say, is
+    /// one word per pixel and would need interleaving from CHW first.
+    /// TODO: handle spatial 8-bit input
     pub fn write_u8(&mut self, network: &Network<Direct>, src: &[u8]) -> usize {
         let needed = network.input_words() * 4;
         assert!(
@@ -510,6 +514,10 @@ impl Cnn<Enabled> {
     }
 
     /// Read a network's 8-bit output, four channels per word.
+    ///
+    /// Only `(N, 1, 1)` shapes. Anything with spatial extent comes back
+    /// pixel-major, not CHW, and would need de-interleaving.
+    /// TODO: handle spatial 8-bit output
     pub fn read_u8<M: InputMode>(&self, network: &Network<M>, dst: &mut [u8]) -> usize {
         let needed = network.output_words() * 4;
         assert!(
