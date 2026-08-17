@@ -73,6 +73,8 @@ impl Nxtlyr {
     field!(next, with_next, 0, 7);
     flag!(link_en, with_link_en, 7);
     flag!(stop, with_stop, 8);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0x000001ff;
 }
 
 impl core::fmt::Debug for Nxtlyr {
@@ -104,6 +106,8 @@ macro_rules! count_register {
             field!(pad_cnt, with_pad_cnt, 13, 2);
             flag!(pad_ena, with_pad_ena, 15);
             field!(diff, with_diff, 16, 16);
+            /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+            pub const DECLARED_BITS: u32 = 0xffffe7ff;
         }
 
         impl core::fmt::Debug for $name {
@@ -141,6 +145,8 @@ macro_rules! pool_register {
         impl $name {
             field!(pool_cnt, with_pool_cnt, 0, 4);
             field!(pool_inc, with_pool_inc, 4, 4);
+            /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+            pub const DECLARED_BITS: u32 = 0x000000ff;
         }
 
         impl core::fmt::Debug for $name {
@@ -165,6 +171,8 @@ register! {
 impl Stride {
     field!(stride, with_stride, 0, 4);
     field!(mp_stride, with_mp_stride, 4, 28);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0xffffffff;
 }
 
 impl core::fmt::Debug for Stride {
@@ -185,6 +193,8 @@ impl WptrBase {
     field!(offset, with_offset, 0, 13);
     field!(instance, with_instance, 13, 2);
     field!(group, with_group, 15, 6);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0x001fffff;
 }
 
 impl core::fmt::Debug for WptrBase {
@@ -201,6 +211,11 @@ impl core::fmt::Debug for WptrBase {
 macro_rules! value_register {
     ($(#[$attr:meta])* $name:ident) => {
         register! { $(#[$attr])* $name }
+
+        impl $name {
+            /// The whole word is one value, so no bit is reserved
+            pub const DECLARED_BITS: u32 = u32::MAX;
+        }
 
         impl core::fmt::Debug for $name {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -250,12 +265,15 @@ impl Lctl {
     field!(shift_cnt, with_shift_cnt, 26, 4);
     flag!(dw_bcast, with_dw_bcast, 29);
     flag!(bypass, with_bypass, 30);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0x7ffffbe0;
 }
 
 impl core::fmt::Debug for Lctl {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut s = f.debug_struct("Lctl");
-        s.field("chw", &self.chw())
+        s.field("unnamed5", &self.unnamed5())
+            .field("chw", &self.chw())
             .field("pool_ena", &self.pool_ena())
             .field("maxpool", &self.maxpool())
             .field("relu", &self.relu())
@@ -282,6 +300,8 @@ impl Lctl2 {
     field!(maxpass, with_maxpass, 0, 4);
     field!(wptr_inc, with_wptr_inc, 4, 8);
     field!(xpch_max, with_xpch_max, 12, 9);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0x001fffff;
 }
 
 impl core::fmt::Debug for Lctl2 {
@@ -309,6 +329,8 @@ impl Oned {
     flag!(pool_first, with_pool_first, 16);
     flag!(elt_conv, with_elt_conv, 17);
     field!(operands, with_operands, 18, 4);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0x003fffff;
 }
 
 impl core::fmt::Debug for Oned {
@@ -335,6 +357,8 @@ register! {
 
 impl Mcnt1 {
     field!(mexp_max, with_mexp_max, 0, 19);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0x0007ffff;
 }
 
 impl core::fmt::Debug for Mcnt1 {
@@ -352,6 +376,8 @@ register! {
 
 impl Mcnt2 {
     field!(mexp_sad, with_mexp_sad, 0, 19);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0x0007ffff;
 }
 
 impl core::fmt::Debug for Mcnt2 {
@@ -369,12 +395,14 @@ register! {
 
 impl Ochan {
     field!(ochan, with_ochan, 0, 32);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0xffffffff;
 }
 
 impl core::fmt::Debug for Ochan {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Ochan")
-            .field("channels", &(self.ochan() + 1))
+            .field("channels", &self.ochan().saturating_add(1))
             .finish()
     }
 }
@@ -387,6 +415,8 @@ register! {
 impl Tptr {
     field!(tptr_max, with_tptr_max, 0, 16);
     field!(tptr_sad, with_tptr_sad, 16, 16);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0xffffffff;
 }
 
 impl core::fmt::Debug for Tptr {
@@ -406,6 +436,8 @@ register! {
 impl Ena {
     field!(proc_ena, with_proc_ena, 0, 16);
     field!(mask_ena, with_mask_ena, 16, 16);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0xffffffff;
 }
 
 impl core::fmt::Debug for Ena {
@@ -437,6 +469,8 @@ impl Post {
     flag!(calcx4, with_calcx4, 29);
     flag!(dw_ena, with_dw_ena, 30);
     flag!(tcalc, with_tcalc, 31);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0xffffffff;
 
     #[inline]
     pub const fn shift_dir(self) -> ShiftDir {
@@ -629,6 +663,8 @@ register! {
 impl Stream1 {
     field!(isval, with_isval, 0, 15);
     flag!(fifo_go, with_fifo_go, 25);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0x02007fff;
 }
 
 impl core::fmt::Debug for Stream1 {
@@ -649,6 +685,8 @@ impl Stream2 {
     field!(invol, with_invol, 0, 4);
     field!(dsval1, with_dsval1, 4, 5);
     field!(dsval2, with_dsval2, 16, 14);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0x3fff01ff;
 }
 
 impl core::fmt::Debug for Stream2 {
@@ -668,6 +706,8 @@ register! {
 
 impl Fmax {
     field!(fbuf_max, with_fbuf_max, 0, 18);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0x0003ffff;
 }
 
 impl core::fmt::Debug for Fmax {
@@ -681,9 +721,17 @@ impl core::fmt::Debug for Fmax {
 /// its beautiful 🥹
 pub trait LayerRegister: Copy + core::fmt::Debug {
     const REG: LayerReg;
+    /// Bits this register's fields cover; the rest must read back zero
+    const DECLARED: u32;
 
     fn from_bits(bits: u32) -> Self;
     fn bits(self) -> u32;
+
+    /// Set bits that belong to no field, which means a miscompiled word
+    #[inline]
+    fn reserved(self) -> u32 {
+        self.bits() & !Self::DECLARED
+    }
 }
 
 macro_rules! layer_registers {
@@ -691,6 +739,7 @@ macro_rules! layer_registers {
         $(
             impl LayerRegister for $ty {
                 const REG: LayerReg = LayerReg::$reg;
+                const DECLARED: u32 = $ty::DECLARED_BITS;
 
                 #[inline]
                 fn from_bits(bits: u32) -> Self {
@@ -706,6 +755,13 @@ macro_rules! layer_registers {
 
         /// Every register that has a value type, in emit order.
         pub const ALL_TYPED_REGS: [LayerReg; 20] = [$(LayerReg::$reg),*];
+
+        /// Set bits of `bits` that belong to no field of `reg`
+        pub fn reserved_bits(reg: LayerReg, bits: u32) -> u32 {
+            match reg {
+                $(LayerReg::$reg => $ty::from_bits(bits).reserved()),*
+            }
+        }
 
         // for debugging
         pub fn with_decoded<T>(
@@ -1458,6 +1514,75 @@ mod tests {
     #[test]
     fn typed_registers_are_in_emit_order() {
         assert_eq!(ALL_TYPED_REGS, super::super::EMIT_ORDER);
+    }
+
+    /// Every `DECLARED_BITS` constant is a hand-written literal, so this pins
+    /// each one to the fields actually declared above it. A bit is declared
+    /// exactly when toggling it changes what some getter reports, which the
+    /// `Debug` impl renders. Catches a mask that drifts after a field is
+    /// added, moved or widened, in either direction.
+    ///
+    /// Toggled against both an all-zero and an all-ones word because some
+    /// `Debug` impls are conditional: `Nxtlyr` renders `next` only when
+    /// `link_en` is set, so probing up from zero alone would miss it.
+    #[test]
+    fn declared_bits_match_the_getters() {
+        for reg in ALL_TYPED_REGS {
+            let (zero, ones) = (rendered(reg, 0), rendered(reg, u32::MAX));
+            for bit in 0..32 {
+                let up = rendered(reg, 1 << bit);
+                let down = rendered(reg, u32::MAX ^ (1 << bit));
+                let visible = up.as_str() != zero.as_str() || down.as_str() != ones.as_str();
+                let declared = reserved_bits(reg, 1 << bit) == 0;
+                assert_eq!(
+                    visible,
+                    declared,
+                    "{reg:?} bit {bit} is {} but reads back {}",
+                    if declared { "declared" } else { "reserved" },
+                    if visible { "visible" } else { "as zero" }
+                );
+            }
+        }
+    }
+
+    /// A register whose fields tile the whole word can have nothing reserved.
+    #[test]
+    fn full_width_registers_reserve_nothing() {
+        for reg in [
+            LayerReg::Stride,
+            LayerReg::WptrTs,
+            LayerReg::WptrMask,
+            LayerReg::WptrMp,
+            LayerReg::Rptr,
+            LayerReg::Ochan,
+            LayerReg::Tptr,
+            LayerReg::En,
+            LayerReg::Post,
+        ] {
+            assert_eq!(reserved_bits(reg, u32::MAX), 0, "{reg:?}");
+        }
+    }
+
+    /// The registers where the check can actually fire, with the reserved
+    /// windows spelled out.
+    #[test]
+    fn reserved_windows_are_where_expected() {
+        for (reg, bits) in [
+            (LayerReg::Next, 0xffff_fe00u32),
+            (LayerReg::Rows, 0x0000_1800),
+            (LayerReg::Cols, 0x0000_1800),
+            (LayerReg::Oned, 0xffc0_0000),
+            (LayerReg::PoolRows, 0xffff_ff00),
+            (LayerReg::PoolCols, 0xffff_ff00),
+            (LayerReg::Wptr, 0xffe0_0000),
+            (LayerReg::Lctl, 0x8000_041f),
+            (LayerReg::Lctl2, 0xffe0_0000),
+            (LayerReg::Mcnt, 0xfff8_0000),
+            (LayerReg::Moffs, 0xfff8_0000),
+        ] {
+            assert_eq!(reserved_bits(reg, u32::MAX), bits, "{reg:?}");
+            assert_eq!(reserved_bits(reg, !bits), 0, "{reg:?}");
+        }
     }
 
     /// A `core::fmt` sink, so the decoder can be checked without `std`.

@@ -2,8 +2,8 @@
 
 use super::config::{emit_layer, LayerSink};
 use super::fields::*;
-use super::network::Layer;
-use super::regs::{LayerReg, QUADRANTS};
+use super::network::{Direct, Layer, Network};
+use super::regs::{LayerReg, ALL_LAYER_REGS, QUADRANTS};
 
 /// `kws20_demo`: 9 layers, no bias, conv1d
 const KWS20: &str = include_str!("golden/kws20_demo.txt");
@@ -104,6 +104,14 @@ impl LayerSink for Recorder {
     }
 }
 
+/// The `LayerReg` at a byte offset
+fn layer_reg(offset: u8) -> LayerReg {
+    *ALL_LAYER_REGS
+        .iter()
+        .find(|r| **r as u8 == offset)
+        .expect("offset is a layer register")
+}
+
 /// Registers the generator writes once per layer rather than per quadrant
 fn is_shared(reg: u8) -> bool {
     !matches!(reg, 0x1c | 0x30 | 0x48 | 0x4c)
@@ -197,6 +205,49 @@ fn every_layer_programs_every_quadrant() {
             );
         }
         assert!(seen.iter().skip(layers).all(|q| q.iter().all(|s| !*s)));
+    }
+}
+
+/// The corpus the reserved-bit masks are answerable to. Every value the
+/// generator emits must sit entirely inside a declared field, or the field
+/// model has a gap and `validate` would reject a network that works.
+///
+/// Checked against all eight MSDK examples while the masks were derived; the
+/// two committed here are what keeps them honest.
+#[test]
+fn no_shipped_value_touches_a_reserved_bit() {
+    for (name, src) in [("kws20_demo", KWS20), ("cifar100", CIFAR100)] {
+        for_each_block(src, |block| {
+            for &(reg, value) in block.writes() {
+                let reg = layer_reg(reg);
+                assert_eq!(
+                    reserved_bits(reg, value),
+                    0,
+                    "{name} layer {} {reg:?} = {value:#010x}",
+                    block.layer
+                );
+            }
+        });
+    }
+}
+
+/// The same corpus driven through the real entry point, so the emit path and
+/// the checks agree about which registers a layer has.
+#[test]
+fn every_layer_validates() {
+    for (name, src) in [("kws20_demo", KWS20), ("cifar100", CIFAR100)] {
+        for_each_block(src, |block| {
+            let layer = layer_from(block);
+            let layers = [layer];
+            let net: Network<Direct> = Network::new(&layers, 0, 0, &[], None, &[], &[]);
+            assert_eq!(
+                net.validate(),
+                Ok(()),
+                "{name} layer {} quadrant {}",
+                block.layer,
+                block.quadrant
+            );
+        });
     }
 }
 

@@ -1,8 +1,10 @@
 //! Checks a network before anything reaches the accelerator
 
-use super::config::MASTER_QUADRANT;
+use super::config::{emit_layer, LayerSink, MASTER_QUADRANT};
+use super::fields::reserved_bits;
 use super::memory::{bias_fits, kernel_burst_fits, DATA_WINDOW_BYTES};
-use super::network::{InputMode, Network};
+use super::network::{InputMode, Layer, Network};
+use super::regs::LayerReg;
 use super::regs::{DATA_INSTANCES_PER_QUADRANT, MAX_LAYERS, PROCESSORS_PER_QUADRANT, QUADRANTS};
 
 /// Why a network cannot be programmed
@@ -28,6 +30,13 @@ pub enum Invalid {
     SourceEnables { layer: u8, quadrant: u8 },
     /// `SHIFT_CNT` has spilled into the bit `DW_BCAST` occupies
     ShiftCountCollision { layer: u8, quadrant: u8 },
+    /// A register has bits set that belong to no field
+    ReservedBits {
+        layer: u8,
+        quadrant: u8,
+        reg: LayerReg,
+        bits: u32,
+    },
 }
 
 impl<M: InputMode> Network<'_, M> {
@@ -137,9 +146,46 @@ impl<M: InputMode> Network<'_, M> {
                         quadrant: q,
                     });
                 }
+
+                check_reserved(layer, index, q)?;
             }
         }
         Ok(())
+    }
+}
+
+/// Rejects any register in one layer-quadrant holding a bit no field covers
+fn check_reserved(layer: &Layer, index: u8, quadrant: u8) -> Result<(), Invalid> {
+    let mut found = Ok(());
+    emit_layer(
+        &mut ReservedCheck {
+            index,
+            quadrant,
+            found: &mut found,
+        },
+        layer,
+        quadrant,
+    );
+    found
+}
+
+struct ReservedCheck<'a> {
+    index: u8,
+    quadrant: u8,
+    found: &'a mut Result<(), Invalid>,
+}
+
+impl LayerSink for ReservedCheck<'_> {
+    fn write(&mut self, reg: LayerReg, bits: u32) {
+        let reserved = reserved_bits(reg, bits);
+        if reserved != 0 && self.found.is_ok() {
+            *self.found = Err(Invalid::ReservedBits {
+                layer: self.index,
+                quadrant: self.quadrant,
+                reg,
+                bits: reserved,
+            });
+        }
     }
 }
 
@@ -356,5 +402,65 @@ mod tests {
         const TABLES: [&[u8]; 4] = [&[], &BIG, &[], &[]];
         let n: Network<Direct> = Network::new(&[], 0, 0, &[], Some(&TABLES), &[], &[]);
         assert_eq!(n.validate(), Err(Invalid::BiasOverrun { quadrant: 1 }));
+    }
+
+    /// `RCNT` bits 11 and 12 sit between `CNT` and `PAD_CNT`. A count that
+    /// overran its eleven bits would land exactly here, and the getter would
+    /// still report an in-range `cnt` - which is why the range check the plan
+    /// asked for cannot see this and the reserved check can.
+    #[test]
+    fn reserved_bits_are_rejected() {
+        let mut layer = Layer::default();
+        layer.rows = Rcnt::from_bits(0x0000_0800);
+        assert_eq!(
+            net(&[layer.clone()]).validate(),
+            Err(Invalid::ReservedBits {
+                layer: 0,
+                quadrant: 0,
+                reg: LayerReg::Rows,
+                bits: 0x0000_0800,
+            })
+        );
+        assert_eq!(Rcnt::from_bits(0x0000_0800).cnt(), 0);
+
+        // The same word without the stray bit is fine.
+        layer.rows = Rcnt::from_bits(0x0002_007f);
+        assert_eq!(net(&[layer]).validate(), Ok(()));
+    }
+
+    /// The check runs through `emit_layer`, so it sees exactly the registers
+    /// that would be written and skips the ones suppression drops.
+    #[test]
+    fn suppressed_registers_are_not_checked() {
+        // Reserved bits alone cannot make a register non-zero and then vanish,
+        // but an absent optional register must not be checked at all.
+        let mut layer = Layer::default();
+        layer.mcnt1 = Some(Mcnt1::from_bits(0xfff8_0000));
+        assert!(matches!(
+            net(&[layer.clone()]).validate(),
+            Err(Invalid::ReservedBits {
+                reg: LayerReg::Mcnt,
+                ..
+            })
+        ));
+
+        layer.mcnt1 = None;
+        assert_eq!(net(&[layer]).validate(), Ok(()));
+    }
+
+    /// Per-quadrant registers are checked in their own quadrant only.
+    #[test]
+    fn reserved_bits_are_reported_per_quadrant() {
+        let mut layer = Layer::default();
+        layer.lctl[2] = Lctl::from_bits(0x8000_0000);
+        assert_eq!(
+            net(&[layer]).validate(),
+            Err(Invalid::ReservedBits {
+                layer: 0,
+                quadrant: 2,
+                reg: LayerReg::Lctl,
+                bits: 0x8000_0000,
+            })
+        );
     }
 }
