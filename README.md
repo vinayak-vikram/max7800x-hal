@@ -65,7 +65,30 @@ it against the one in `cnn.c`, byte for byte. Register values are emitted as
 `from_bits(0x...)` rather than builder chains, so no bit is lost to a field the
 model does not name.
 
+`tools/cnn-synth.py` starts a step earlier. It takes the arguments `ai8xize.py`
+takes and emits the same module, so a checkpoint and a YAML configuration reach
+Rust in one command:
+
+```sh
+export AI8X_SYNTHESIS=~/ai8x-synthesis
+python3 tools/cnn-synth.py -o src/network.rs --prefix kws20 --softmax \
+    --config-file networks/ai87-kws20-v3-hwc.yaml \
+    --checkpoint-file trained/ai87-kws20_v3-qat8-q.pth.tar
+```
+
+It runs the real generator into a scratch directory, verifies the result the
+same way, and passes every argument it does not recognize through untouched.
+`--device` defaults to MAX78002 and nothing else is accepted.
+
+izer's dependencies are pinned to versions newer ones cannot replace, so
+`tools/` is a [uv] project: `tools/pyproject.toml` and `tools/uv.lock` pin them
+and `uv run --project tools` builds the environment on first use. Nothing has
+to be installed first and nothing is written into the ai8x-synthesis checkout.
+Pass `--python` to use an interpreter that already has izer's dependencies
+instead.
+
 [ai8xize.py]: https://github.com/analogdevicesinc/ai8x-synthesis
+[uv]: https://docs.astral.sh/uv/
 
 ### Memory
 
