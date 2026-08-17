@@ -8,12 +8,14 @@ pub mod fields;
 pub mod memory;
 pub mod network;
 pub mod regs;
+pub mod validate;
 
 pub use config::{emit_layer, LayerSink, MASTER_QUADRANT};
 pub use network::{
     Direct, Fifo, InputMode, InputRegion, Layer, Network, OutputRegion, Stream, WeightRegion,
 };
 pub use regs::{LayerReg, LayerRegs, Quadrant, Reg};
+pub use validate::Invalid;
 
 use crate::gcr::clocks::{Clock, Disabled, Enabled, InternalPll, PeripheralClock};
 use crate::gcr::{ClockForPeripheral, GcrRegisters};
