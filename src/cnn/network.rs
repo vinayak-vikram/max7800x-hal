@@ -106,6 +106,17 @@ pub struct WeightRegion<'a> {
     pub data: &'a [u32],
 }
 
+/// A region of data memory the network reads its input from.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct InputRegion {
+    pub quadrant: u8,
+    pub instance: u8,
+    /// Word offset within the memory instance.
+    pub word: u16,
+    /// Length in words.
+    pub len: u16,
+}
+
 /// A region of data memory holding part of the network's output.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct OutputRegion {
@@ -127,6 +138,8 @@ pub struct Network<'a, M: InputMode> {
     pub weights: &'a [WeightRegion<'a>],
     /// Bias data per quadrant
     pub bias: Option<&'a [&'a [u8]; QUADRANTS as usize]>,
+    /// Where the input goes in data memory, before the network starts
+    pub input: &'a [InputRegion],
     pub output: &'a [OutputRegion],
     _mode: PhantomData<M>,
 }
@@ -139,6 +152,7 @@ impl<'a, M: InputMode> Network<'a, M> {
         last_layer: u8,
         weights: &'a [WeightRegion<'a>],
         bias: Option<&'a [&'a [u8]; QUADRANTS as usize]>,
+        input: &'a [InputRegion],
         output: &'a [OutputRegion],
     ) -> Self {
         Self {
@@ -147,6 +161,7 @@ impl<'a, M: InputMode> Network<'a, M> {
             last_layer,
             weights,
             bias,
+            input,
             output,
             _mode: PhantomData,
         }
@@ -159,6 +174,11 @@ impl<'a, M: InputMode> Network<'a, M> {
 
     pub const fn has_bias(&self) -> bool {
         self.bias.is_some()
+    }
+
+    /// Total words the input regions cover.
+    pub fn input_words(&self) -> usize {
+        self.input.iter().map(|r| r.len as usize).sum()
     }
 
     /// Total words the output regions cover.
@@ -304,12 +324,12 @@ mod tests {
     #[test]
     fn network_reports_streaming_and_bias() {
         const LAYERS: [Layer; 0] = [];
-        let net: Network<Direct> = Network::new(&LAYERS, 0, 0, &[], None, &[]);
+        let net: Network<Direct> = Network::new(&LAYERS, 0, 0, &[], None, &[], &[]);
         assert!(!net.is_streaming());
         assert!(!net.has_bias());
 
         let layers = [synthetic_layer()];
-        let net: Network<Direct> = Network::new(&layers, 0, 0, &[], None, &[]);
+        let net: Network<Direct> = Network::new(&layers, 0, 0, &[], None, &[], &[]);
         assert!(!net.is_streaming());
 
         let mut streaming = synthetic_layer();
@@ -320,7 +340,7 @@ mod tests {
             rollover: Fmax::from_bits(0x148),
         });
         let layers = [streaming];
-        let net: Network<Fifo> = Network::new(&layers, 0, 0, &[], None, &[]);
+        let net: Network<Fifo> = Network::new(&layers, 0, 0, &[], None, &[], &[]);
         assert!(net.is_streaming());
     }
     /// `kws20_demo` produces 21 words of 32-bit output from six regions:
@@ -365,7 +385,7 @@ mod tests {
                 len: 1,
             },
         ];
-        let net: Network<Direct> = Network::new(&[], 0, 0, &[], None, &OUTPUT);
+        let net: Network<Direct> = Network::new(&[], 0, 0, &[], None, &[], &OUTPUT);
         assert_eq!(net.output_words(), 21);
 
         // mobilefacenet-112: 64 channels of 8-bit output as 16 single words,
@@ -376,8 +396,55 @@ mod tests {
             word: 10240,
             len: 1,
         }; 16];
-        let net: Network<Fifo> = Network::new(&[], 0, 0, &[], None, &BYTES);
+        let net: Network<Fifo> = Network::new(&[], 0, 0, &[], None, &[], &BYTES);
         assert_eq!(net.output_words(), 16);
         assert_eq!(net.output_words() * 4, 64);
+    }
+
+    /// `kinetics` spreads its input over twelve regions of 7200 words, four
+    /// instances in each of three quadrants.
+    #[test]
+    fn input_words_sums_the_regions() {
+        let regions: [InputRegion; 12] = core::array::from_fn(|i| InputRegion {
+            quadrant: (i / 4) as u8,
+            instance: (i % 4) as u8,
+            word: 960,
+            len: 7200,
+        });
+        let net: Network<Direct> = Network::new(&[], 0, 0, &[], None, &regions, &[]);
+        assert_eq!(net.input_words(), 12 * 7200);
+
+        let net: Network<Direct> = Network::new(&[], 0, 0, &[], None, &[], &[]);
+        assert_eq!(net.input_words(), 0);
+    }
+
+    /// The descriptors must resolve to the addresses the generated
+    /// `load_input` pokes: `cifar-100-mobilenet-v2-0.75` loads 1024 words at
+    /// `0x51800000`, `imagenet` 12544 at `0x54860000`, and `kinetics` twelve
+    /// runs of 7200 at word 960 of each instance.
+    #[test]
+    fn input_regions_match_the_generated_addresses() {
+        use crate::cnn::memory::data_addr;
+
+        let addr = |r: InputRegion| data_addr(r.quadrant, r.instance) + r.word as u32 * 4;
+
+        for (quadrant, instance, word, expected) in [
+            (0u8, 0u8, 0u16, 0x5180_0000u32),
+            (3, 3, 0, 0x5486_0000),
+            (0, 0, 960, 0x5180_0f00),
+            (0, 3, 960, 0x5186_0f00),
+            (1, 0, 960, 0x5280_0f00),
+            (2, 3, 960, 0x5386_0f00),
+        ] {
+            assert_eq!(
+                addr(InputRegion {
+                    quadrant,
+                    instance,
+                    word,
+                    len: 1
+                }),
+                expected
+            );
+        }
     }
 }

@@ -10,7 +10,9 @@ pub mod network;
 pub mod regs;
 
 pub use config::{emit_layer, LayerSink, MASTER_QUADRANT};
-pub use network::{Direct, Fifo, InputMode, Layer, Network, OutputRegion, Stream, WeightRegion};
+pub use network::{
+    Direct, Fifo, InputMode, InputRegion, Layer, Network, OutputRegion, Stream, WeightRegion,
+};
 pub use regs::{LayerReg, LayerRegs, Quadrant, Reg};
 
 use crate::gcr::clocks::{Clock, Disabled, Enabled, InternalPll, PeripheralClock};
@@ -404,6 +406,57 @@ impl Cnn<Enabled> {
     /// Release the master quadrant again after [`stop`](Cnn::stop).
     pub fn resume(&mut self) {
         self.q0.ctl().modify(|_, w| w.en().set_bit());
+    }
+
+    /// Place a network's 32-bit input in data memory. Must precede `start`.
+    pub fn write_u32(&mut self, network: &Network<Direct>, src: &[u32]) -> usize {
+        let needed = network.input_words();
+        assert!(
+            src.len() >= needed,
+            "input buffer holds {} words, network takes {}",
+            src.len(),
+            needed
+        );
+
+        let mut pos = 0;
+        for region in network.input {
+            let len = region.len as usize;
+            memory::write_data(
+                region.quadrant,
+                region.instance,
+                region.word as u32,
+                &src[pos..pos + len],
+            );
+            pos += len;
+        }
+        pos
+    }
+
+    /// Place a network's 8-bit input in data memory, four channels per word.
+    pub fn write_u8(&mut self, network: &Network<Direct>, src: &[u8]) -> usize {
+        let needed = network.input_words() * 4;
+        assert!(
+            src.len() >= needed,
+            "input buffer holds {} bytes, network takes {}",
+            src.len(),
+            needed
+        );
+
+        let mut pos = 0;
+        for region in network.input {
+            for word in 0..region.len as u32 {
+                let packed =
+                    u32::from_le_bytes([src[pos], src[pos + 1], src[pos + 2], src[pos + 3]]);
+                memory::write_data(
+                    region.quadrant,
+                    region.instance,
+                    region.word as u32 + word,
+                    &[packed],
+                );
+                pos += 4;
+            }
+        }
+        pos
     }
 
     /// Read a network's 32-bit output.
