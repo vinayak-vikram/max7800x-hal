@@ -1,0 +1,398 @@
+//! Power domain and clocking
+
+use super::{Cnn, CnnState};
+use crate::gcr::clocks::{Clock, Disabled, Enabled, InternalPll, PeripheralClock};
+use crate::gcr::{ClockForPeripheral, GcrRegisters};
+use core::marker::PhantomData;
+use embedded_hal::delay::DelayNs;
+
+/// Highest clock frequency the accelerator supports, with the datapath pipeline enabled
+pub const MAX_PIPELINED_FREQUENCY: u32 = 200_000_000;
+
+/// Highest clock frequency the accelerator supports with the pipeline disabled
+pub const MAX_NON_PIPELINED_FREQUENCY: u32 = 50_000_000;
+
+/// Settling time for the CNN power-domain load switches, in milliseconds
+pub const LOAD_SWITCH_SETTLE_MS: u32 = 10;
+
+/// Whether the accelerator datapath pipeline is enabled
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum Pipeline {
+    #[default]
+    Enabled,
+    Disabled,
+}
+
+impl Pipeline {
+    pub const fn ctl_bits(self) -> u32 {
+        match self {
+            Self::Enabled => 0,
+            Self::Disabled => 1 << 5,
+        }
+    }
+}
+
+/// Clock source for the accelerator
+#[derive(Clone, Copy)]
+pub enum CnnClockSource {
+    Peripheral(Clock<PeripheralClock>),
+    Iso,
+    Ipll(Clock<InternalPll>),
+}
+
+impl CnnClockSource {
+    /// Frequency of this source before the CNN divider is applied.
+    pub const fn frequency(&self) -> u32 {
+        match self {
+            Self::Peripheral(clock) => clock.frequency,
+            Self::Iso => 60_000_000,
+            Self::Ipll(_) => InternalPll::CNN_FREQUENCY,
+        }
+    }
+}
+
+/// Divider applied to the selected clock source.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum CnnClockDiv {
+    Div1,
+    /// The reset value.
+    #[default]
+    Div2,
+    Div4,
+    Div8,
+    Div16,
+}
+
+impl CnnClockDiv {
+    pub const fn divisor(self) -> u32 {
+        match self {
+            Self::Div1 => 1,
+            Self::Div2 => 2,
+            Self::Div4 => 4,
+            Self::Div8 => 8,
+            Self::Div16 => 16,
+        }
+    }
+}
+
+macro_rules! all_quadrants {
+    ($w:expr, $f0:ident, $f1:ident, $f2:ident, $f3:ident, $bit:expr) => {
+        $w.$f0()
+            .bit($bit)
+            .$f1()
+            .bit($bit)
+            .$f2()
+            .bit($bit)
+            .$f3()
+            .bit($bit)
+    };
+}
+
+impl Cnn<Disabled> {
+    /// Take ownership of the accelerator. Does not power it up
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        cnn: crate::pac::Cnn,
+        q0: crate::pac::Cnnx16_0,
+        q1: crate::pac::Cnnx16_1,
+        q2: crate::pac::Cnnx16_2,
+        q3: crate::pac::Cnnx16_3,
+        gcfr: crate::pac::Gcfr,
+    ) -> Self {
+        Self {
+            cnn,
+            q0,
+            q1,
+            q2,
+            q3,
+            gcfr,
+            pipeline: Pipeline::Enabled,
+            source: None,
+            divider: CnnClockDiv::default(),
+            _state: PhantomData,
+        }
+    }
+
+    /// Disable the datapath pipeline, cap clock frequency
+    pub fn with_pipeline(mut self, mode: Pipeline) -> Self {
+        self.pipeline = mode;
+        self
+    }
+
+    /// Power up the accelerator and start its clock
+    pub fn enable(
+        self,
+        reg: &mut GcrRegisters,
+        source: CnnClockSource,
+        divider: CnnClockDiv,
+        delay: &mut impl DelayNs,
+    ) -> Cnn<Enabled> {
+        let frequency = source.frequency() / divider.divisor();
+        debug_assert_frequency(self.pipeline, frequency);
+
+        self.gcfr.reg3().modify(|_, w| {
+            all_quadrants!(
+                w,
+                cnnx16_0_rst,
+                cnnx16_1_rst,
+                cnnx16_2_rst,
+                cnnx16_3_rst,
+                true
+            )
+        });
+        self.gcfr.reg1().modify(|_, w| {
+            all_quadrants!(
+                w,
+                cnnx16_0_ram_en,
+                cnnx16_1_ram_en,
+                cnnx16_2_ram_en,
+                cnnx16_3_ram_en,
+                true
+            )
+        });
+        self.gcfr.reg0().modify(|_, w| {
+            all_quadrants!(
+                w,
+                cnnx16_0_pwr_en,
+                cnnx16_1_pwr_en,
+                cnnx16_2_pwr_en,
+                cnnx16_3_pwr_en,
+                true
+            )
+        });
+
+        delay.delay_ms(LOAD_SWITCH_SETTLE_MS);
+
+        self.gcfr.reg2().modify(|_, w| {
+            all_quadrants!(
+                w,
+                cnnx16_0_iso,
+                cnnx16_1_iso,
+                cnnx16_2_iso,
+                cnnx16_3_iso,
+                false
+            )
+        });
+        self.gcfr.reg3().modify(|_, w| {
+            all_quadrants!(
+                w,
+                cnnx16_0_rst,
+                cnnx16_1_rst,
+                cnnx16_2_rst,
+                cnnx16_3_rst,
+                false
+            )
+        });
+
+        if matches!(source, CnnClockSource::Ipll(_)) {
+            while reg.gcr.ipll_ctrl().read().rdy().bit_is_clear() {}
+        }
+        write_clock(reg, source, divider);
+
+        unsafe {
+            self.cnn.enable_clock(&mut reg.gcr);
+        }
+
+        Cnn {
+            cnn: self.cnn,
+            q0: self.q0,
+            q1: self.q1,
+            q2: self.q2,
+            q3: self.q3,
+            gcfr: self.gcfr,
+            pipeline: self.pipeline,
+            source: Some(source),
+            divider,
+            _state: PhantomData,
+        }
+    }
+}
+
+impl Cnn<Enabled> {
+    /// The accelerator clock frequency, after the divider
+    pub const fn frequency(&self) -> u32 {
+        match self.source {
+            Some(source) => source.frequency() / self.divider.divisor(),
+            None => 0,
+        }
+    }
+
+    /// The selected clock source
+    pub const fn source(&self) -> CnnClockSource {
+        match self.source {
+            Some(source) => source,
+            None => CnnClockSource::Iso,
+        }
+    }
+
+    /// Change the clock divider without repeating the power-up sequence
+    pub fn set_divider(&mut self, reg: &mut GcrRegisters, divider: CnnClockDiv) {
+        let source = self.source();
+        debug_assert_frequency(self.pipeline, source.frequency() / divider.divisor());
+        write_clock(reg, source, divider);
+        self.divider = divider;
+    }
+
+    /// Gate the clock and power the accelerator down
+    pub fn disable(self, reg: &mut GcrRegisters) -> Cnn<Disabled> {
+        unsafe {
+            self.cnn.disable_clock(&mut reg.gcr);
+        }
+
+        self.gcfr.reg3().modify(|_, w| {
+            all_quadrants!(
+                w,
+                cnnx16_0_rst,
+                cnnx16_1_rst,
+                cnnx16_2_rst,
+                cnnx16_3_rst,
+                true
+            )
+        });
+        self.gcfr.reg2().modify(|_, w| {
+            all_quadrants!(
+                w,
+                cnnx16_0_iso,
+                cnnx16_1_iso,
+                cnnx16_2_iso,
+                cnnx16_3_iso,
+                true
+            )
+        });
+        self.gcfr.reg0().modify(|_, w| {
+            all_quadrants!(
+                w,
+                cnnx16_0_pwr_en,
+                cnnx16_1_pwr_en,
+                cnnx16_2_pwr_en,
+                cnnx16_3_pwr_en,
+                false
+            )
+        });
+        self.gcfr.reg1().modify(|_, w| {
+            all_quadrants!(
+                w,
+                cnnx16_0_ram_en,
+                cnnx16_1_ram_en,
+                cnnx16_2_ram_en,
+                cnnx16_3_ram_en,
+                false
+            )
+        });
+        self.gcfr.reg3().modify(|_, w| {
+            all_quadrants!(
+                w,
+                cnnx16_0_rst,
+                cnnx16_1_rst,
+                cnnx16_2_rst,
+                cnnx16_3_rst,
+                false
+            )
+        });
+
+        Cnn {
+            cnn: self.cnn,
+            q0: self.q0,
+            q1: self.q1,
+            q2: self.q2,
+            q3: self.q3,
+            gcfr: self.gcfr,
+            pipeline: self.pipeline,
+            source: None,
+            divider: self.divider,
+            _state: PhantomData,
+        }
+    }
+}
+
+impl<S: CnnState> Cnn<S> {
+    /// Retain the accelerator's contents across UPM, STANDBY and BACKUP
+    pub fn set_retention(&mut self, enable: bool) {
+        self.gcfr.reg2().modify(|_, w| {
+            let w = all_quadrants!(
+                w,
+                cnnx16_0_data_ret_en,
+                cnnx16_1_data_ret_en,
+                cnnx16_2_data_ret_en,
+                cnnx16_3_data_ret_en,
+                enable
+            );
+            all_quadrants!(
+                w,
+                cnnx16_0_ram_data_ret_en,
+                cnnx16_1_ram_data_ret_en,
+                cnnx16_2_ram_data_ret_en,
+                cnnx16_3_ram_data_ret_en,
+                enable
+            )
+        });
+    }
+}
+
+/// Writes the source and the divider in one register write so we don't overclock the accelerator
+fn write_clock(reg: &mut GcrRegisters, source: CnnClockSource, divider: CnnClockDiv) {
+    reg.gcr.pclkdiv().modify(|_, w| {
+        let w = match divider {
+            CnnClockDiv::Div1 => w.cnnclkdiv().div1(),
+            CnnClockDiv::Div2 => w.cnnclkdiv().div2(),
+            CnnClockDiv::Div4 => w.cnnclkdiv().div4(),
+            CnnClockDiv::Div8 => w.cnnclkdiv().div8(),
+            CnnClockDiv::Div16 => w.cnnclkdiv().div16(),
+        };
+        match source {
+            CnnClockSource::Peripheral(_) => w.cnnclksel().pclk(),
+            CnnClockSource::Iso => w.cnnclksel().iso(),
+            CnnClockSource::Ipll(_) => w.cnnclksel().ipll(),
+        }
+    });
+}
+
+#[inline]
+fn debug_assert_frequency(pipeline: Pipeline, frequency: u32) {
+    debug_assert!(
+        frequency <= MAX_PIPELINED_FREQUENCY,
+        "CNN clock exceeds the maximum supported frequency"
+    );
+    debug_assert!(
+        matches!(pipeline, Pipeline::Enabled) || frequency <= MAX_NON_PIPELINED_FREQUENCY,
+        "CNN clock exceeds the maximum supported frequency without the pipeline"
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_divider_defaults_to_the_reset_value() {
+        // PCLKDIV.CNNCLKDIV comes out of reset at div-by-2, not div-by-1.
+        assert_eq!(CnnClockDiv::default(), CnnClockDiv::Div2);
+    }
+
+    /// The PLL's CNN branch runs at twice the system branch, so the source
+    /// frequency must not be taken from the `Clock` itself.
+    #[test]
+    fn pll_source_uses_the_cnn_branch() {
+        assert_eq!(InternalPll::CNN_FREQUENCY, MAX_PIPELINED_FREQUENCY);
+        assert_eq!(
+            InternalPll::CNN_FREQUENCY,
+            2 * <InternalPll as crate::gcr::clocks::OscillatorSource>::BASE_FREQUENCY
+        );
+    }
+
+    #[test]
+    fn full_speed_needs_the_pipeline_and_the_pll() {
+        // Only the PLL undivided reaches the rated maximum.
+        assert_eq!(
+            InternalPll::CNN_FREQUENCY / CnnClockDiv::Div1.divisor(),
+            MAX_PIPELINED_FREQUENCY
+        );
+        // Div4 is the fastest PLL setting a non-pipelined part can take.
+        assert!(
+            InternalPll::CNN_FREQUENCY / CnnClockDiv::Div4.divisor() <= MAX_NON_PIPELINED_FREQUENCY
+        );
+        assert!(
+            InternalPll::CNN_FREQUENCY / CnnClockDiv::Div2.divisor() > MAX_NON_PIPELINED_FREQUENCY
+        );
+    }
+}
