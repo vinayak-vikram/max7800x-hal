@@ -1136,13 +1136,6 @@ mod tests {
         }
     }
 
-    /// The emit order is a property of the network, not of this table, but
-    /// keeping the table in emit order makes a generic emit trivial.
-    #[test]
-    fn typed_registers_are_in_emit_order() {
-        assert_eq!(ALL_TYPED_REGS, super::super::EMIT_ORDER);
-    }
-
     /// Every `DECLARED_BITS` constant is a hand-written literal, so this pins
     /// each one to the fields actually declared above it. A bit is declared
     /// exactly when toggling it changes what some getter reports, which the

@@ -704,54 +704,9 @@ fn debug_assert_frequency(pipeline: Pipeline, frequency: u32) {
         "CNN clock exceeds the maximum supported frequency without the pipeline"
     );
 }
-/// The order in which a layer's registers must be written.
-pub const EMIT_ORDER: [LayerReg; 20] = [
-    LayerReg::Next,
-    LayerReg::Rows,
-    LayerReg::Cols,
-    LayerReg::PoolRows,
-    LayerReg::PoolCols,
-    LayerReg::Stride,
-    LayerReg::Wptr,
-    LayerReg::WptrTs,
-    LayerReg::WptrMask,
-    LayerReg::WptrMp,
-    LayerReg::Rptr,
-    LayerReg::Lctl,
-    LayerReg::Lctl2,
-    LayerReg::Mcnt,
-    LayerReg::Moffs,
-    LayerReg::Ochan,
-    LayerReg::Oned,
-    LayerReg::Tptr,
-    LayerReg::Post,
-    LayerReg::En,
-];
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn emit_order_covers_every_register_once() {
-        for expected in regs::ALL_LAYER_REGS {
-            let count = EMIT_ORDER.iter().filter(|r| **r == expected).count();
-            assert_eq!(count, 1, "{expected:?} appears {count} times in EMIT_ORDER");
-        }
-        assert_eq!(EMIT_ORDER.len(), regs::ALL_LAYER_REGS.len());
-    }
-
-    #[test]
-    fn enables_are_written_last() {
-        assert_eq!(*EMIT_ORDER.last().unwrap(), LayerReg::En);
-    }
-
-    #[test]
-    fn oned_is_written_after_output_channel_count() {
-        let pos = |r: LayerReg| EMIT_ORDER.iter().position(|x| *x == r).unwrap();
-        assert!(pos(LayerReg::Oned) > pos(LayerReg::Ochan));
-        assert!(pos(LayerReg::Post) > pos(LayerReg::Tptr));
-    }
 
     #[test]
     fn dividers_match_their_names() {

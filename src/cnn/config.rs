@@ -32,6 +32,8 @@ fn emit<R: LayerRegister>(sink: &mut impl LayerSink, value: R) {
 }
 
 /// Write one layer's configuration for one quadrant.
+/// This order is the generator's, not the address order. `Oned` follows
+/// `Ochan`, and `Ena` is last because it arms the processors.
 pub fn emit_layer(sink: &mut impl LayerSink, layer: &Layer, quadrant: u8) {
     let q = quadrant as usize;
 
