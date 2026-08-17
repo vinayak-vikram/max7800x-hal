@@ -54,7 +54,7 @@ pub struct Stream {
 }
 
 /// One hardware layer.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct Layer {
     pub next: Nxtlyr,
     pub rows: Rcnt,

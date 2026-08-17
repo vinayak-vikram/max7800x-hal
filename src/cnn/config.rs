@@ -113,33 +113,6 @@ mod tests {
         }
     }
 
-    fn blank() -> Layer {
-        Layer {
-            next: Nxtlyr::new(),
-            rows: Rcnt::new(),
-            cols: Ccnt::new(),
-            oned: Oned::new(),
-            pool_rows: Prcnt::new(),
-            pool_cols: Pccnt::new(),
-            stride: Stride::new(),
-            wptr_ts: WptrToffs::new(),
-            wptr_moffs: None,
-            wptr_choffs: WptrChoffs::new(),
-            rptr: RptrBase::new(),
-            lctl2: Lctl2::new(),
-            mcnt1: None,
-            mcnt2: Mcnt2::new(),
-            ochan: Ochan::new(),
-            tptr: Tptr::new(),
-            lctl: [Lctl::new(); 4],
-            post: [Post::new(); 4],
-            wptr: [WptrBase::new(); 4],
-            ena: [Ena::new(); 4],
-            stream: None,
-            master_only: false,
-        }
-    }
-
     /// kws20_demo layer 0, transcribed from the generated `cnn.c`.
     fn kws20_layer0() -> Layer {
         Layer {
@@ -161,7 +134,7 @@ mod tests {
             post: [Post::from_bits(0x0000_2000); 4],
             wptr: [WptrBase::from_bits(0x0000_0800); 4],
             ena: [Ena::from_bits(0xffff_ffff); 4],
-            ..blank()
+            ..Layer::default()
         }
     }
 
@@ -234,14 +207,14 @@ mod tests {
         }
 
         // A layer with nothing set emits nothing.
-        assert_eq!(Recorder::of(&blank(), 0).len, 0);
+        assert_eq!(Recorder::of(&Layer::default(), 0).len, 0);
     }
 
     /// The emitted order must be the declared emit order, restricted to the
     /// registers that were written.
     #[test]
     fn emit_follows_the_declared_order() {
-        let mut full = blank();
+        let mut full = Layer::default();
         // Give every register a non-zero value so none is suppressed.
         full.next = Nxtlyr::from_bits(1);
         full.rows = Rcnt::from_bits(1);

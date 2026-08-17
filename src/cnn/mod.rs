@@ -10,6 +10,9 @@ pub mod network;
 pub mod regs;
 pub mod validate;
 
+#[cfg(test)]
+mod golden;
+
 pub use config::{emit_layer, LayerSink, MASTER_QUADRANT};
 pub use network::{
     Direct, Fifo, InputMode, InputRegion, Layer, Network, OutputRegion, Stream, WeightRegion,

@@ -149,33 +149,6 @@ mod tests {
     use crate::cnn::fields::*;
     use crate::cnn::network::{Direct, InputRegion, Layer, OutputRegion, WeightRegion};
 
-    fn blank() -> Layer {
-        Layer {
-            next: Nxtlyr::new(),
-            rows: Rcnt::new(),
-            cols: Ccnt::new(),
-            oned: Oned::new(),
-            pool_rows: Prcnt::new(),
-            pool_cols: Pccnt::new(),
-            stride: Stride::new(),
-            wptr_ts: WptrToffs::new(),
-            wptr_moffs: None,
-            wptr_choffs: WptrChoffs::new(),
-            rptr: RptrBase::new(),
-            lctl2: Lctl2::new(),
-            mcnt1: None,
-            mcnt2: Mcnt2::new(),
-            ochan: Ochan::new(),
-            tptr: Tptr::new(),
-            lctl: [Lctl::new(); 4],
-            post: [Post::new(); 4],
-            wptr: [WptrBase::new(); 4],
-            ena: [Ena::new(); 4],
-            stream: None,
-            master_only: false,
-        }
-    }
-
     fn net(layers: &[Layer]) -> Network<'_, Direct> {
         Network::new(
             layers,
@@ -190,14 +163,14 @@ mod tests {
 
     #[test]
     fn a_blank_layer_is_valid() {
-        assert_eq!(net(&[blank()]).validate(), Ok(()));
+        assert_eq!(net(&[Layer::default()]).validate(), Ok(()));
     }
 
     /// `kws20_demo` layer 0: `LCTL = 0xeb20` on the master naming quadrants
     /// 1-3, `0x0b20` elsewhere, and `ENA = 0xffffffff`.
     #[test]
     fn the_shipped_shape_validates() {
-        let mut layer = blank();
+        let mut layer = Layer::default();
         layer.lctl = [
             Lctl::from_bits(0x0000_eb20),
             Lctl::from_bits(0x0000_0b20),
@@ -225,7 +198,7 @@ mod tests {
             0xf000_f000,
             0xffff_ffff,
         ] {
-            let mut layer = blank();
+            let mut layer = Layer::default();
             layer.ena = [Ena::from_bits(bits); 4];
             assert_eq!(net(&[layer]).validate(), Ok(()), "{bits:#010x}");
         }
@@ -235,7 +208,7 @@ mod tests {
     /// memories armed do not match the processors doing the work.
     #[test]
     fn mismatched_mask_enables_are_rejected() {
-        let mut layer = blank();
+        let mut layer = Layer::default();
         layer.ena = [Ena::from_bits(0x000f_00ff); 4];
         assert_eq!(
             net(&[layer]).validate(),
@@ -249,7 +222,7 @@ mod tests {
     /// `SIENA` lives only in the master's word, and never names the master.
     #[test]
     fn source_enables_belong_to_the_master() {
-        let mut layer = blank();
+        let mut layer = Layer::default();
         layer.lctl[1] = Lctl::new().with_siena(0b1110);
         assert_eq!(
             net(&[layer]).validate(),
@@ -259,7 +232,7 @@ mod tests {
             })
         );
 
-        let mut layer = blank();
+        let mut layer = Layer::default();
         layer.lctl[0] = Lctl::new().with_siena(0b1111);
         assert_eq!(
             net(&[layer]).validate(),
@@ -276,7 +249,7 @@ mod tests {
     #[test]
     fn read_ahead_shift_collision_is_rejected() {
         let bad = Lctl::new().with_rd_ahead(true).with_shift_cnt(8);
-        let mut layer = blank();
+        let mut layer = Layer::default();
         layer.lctl = [bad; 4];
         assert_eq!(
             net(&[layer]).validate(),
@@ -287,25 +260,25 @@ mod tests {
         );
 
         // Seven fits in the three bits below DW_BCAST.
-        let mut layer = blank();
+        let mut layer = Layer::default();
         layer.lctl = [Lctl::new().with_rd_ahead(true).with_shift_cnt(7); 4];
         assert_eq!(net(&[layer]).validate(), Ok(()));
 
         // With tcalc the field is a different, smaller quantity.
-        let mut layer = blank();
+        let mut layer = Layer::default();
         layer.lctl = [bad; 4];
         layer.post = [Post::new().with_tcalc(true); 4];
         assert_eq!(net(&[layer]).validate(), Ok(()));
 
         // Read-ahead is what makes the field mean in_expand at all.
-        let mut layer = blank();
+        let mut layer = Layer::default();
         layer.lctl = [Lctl::new().with_shift_cnt(15); 4];
         assert_eq!(net(&[layer]).validate(), Ok(()));
     }
 
     #[test]
     fn layer_bounds_are_checked() {
-        let layers = [blank(), blank()];
+        let layers = [Layer::default(), Layer::default()];
         let n: Network<Direct> = Network::new(&layers, 1, 0, &[], None, &[], &[]);
         assert_eq!(
             n.validate(),
