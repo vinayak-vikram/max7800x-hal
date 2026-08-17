@@ -62,9 +62,8 @@ impl core::fmt::Debug for Reg {
 
 /// A register within the per-layer register file.
 ///
-/// Values are the byte offset within a layer's 0x100-byte block.
-/// TODO: Figure out bitfield meanings. GEE GEE GEE.
-///       As previously mentioned, datasheet is gee.
+/// Values are the byte offset within a layer's 0x100-byte block. See
+/// [`fields`](super::fields) for the bitfields at each one.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum LayerReg {
