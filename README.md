@@ -51,6 +51,79 @@ cnn.wait();
 cnn.read_u32(&NETWORK, &mut out);
 ```
 
+### Training a network
+
+The checkpoint comes from [ai8x-training], and the model has to be built out of
+that repository's `ai8x` modules (`FusedConv2dBNReLU`, `FusedMaxPoolConv1dReLU`
+and the rest). Those model the accelerator's clipping, rounding and per-layer
+output shift while the network trains. A model written with plain `nn.Conv2d`
+trains fine and then loses most of its accuracy the moment it is quantized.
+
+What the hardware will run, on MAX78002:
+
+| Operation | Limits |
+| --- | --- |
+| `Conv2d` | 1x1 or 3x3, stride 1, padding 0 to 2, dilation to 16 |
+| `Conv1d` | 1 to 9 taps, stride 1, padding 0 to 2 |
+| `ConvTranspose2d` | 3x3, stride 2 |
+| `Linear` | up to 1024 inputs and 1024 outputs |
+| Pooling | max or average, 1x1 to 16x16, stride 1 to 16 |
+| Activation | ReLU and Abs |
+| Element-wise | add, subtract, XOR, OR, over 2 to 16 inputs |
+
+At most 2048 channels per layer and 128 layers. Batch norm is folded into the
+weights, softmax runs in software, and every channel of every intermediate
+tensor has to fit one 80 KiB data memory instance.
+
+Run these from the training project:
+
+```sh
+python train.py --model ai87netfusion --dataset SensorFusion \
+    --device MAX78002 --qat-policy policies/qat_policy.yaml --epochs 200
+python quantize.py logs/<run>/qat_best.pth.tar trained/fusion-q.pth.tar \
+    --device MAX78002
+python train.py --model ai87netfusion --dataset SensorFusion \
+    --device MAX78002 --evaluate --exp-load-weights-from trained/fusion-q.pth.tar -8
+```
+
+The model goes in `models/` and the loader in `datasets/`, both registered so
+`--model` and `--dataset` can find them. The third command reports the accuracy
+that counts, since it runs the quantized weights the way the hardware will.
+Adding
+`--save-sample 10` writes one test input as a NumPy file, which `cnn-synth.py`
+forwards as `--sample-input` to get a known-answer test out of the generator.
+
+The YAML is separate work and is not derived from the checkpoint. It says which
+processors each layer occupies, where its input and output sit in data memory,
+and which operation it runs, and it has to match the model graph exactly.
+
+#### Fusing several sensors
+
+The cheap version: resample every modality onto one window in the loader and
+hand the accelerator a single tensor whose channels are the sensors.
+
+For per-modality branches, `in_sequences` names more than one earlier layer,
+which gives either a channel concatenation or a multi-operand element-wise
+`add`. Concatenation wants the branches on adjacent output processors, listed
+in processor order, with every component but the last a multiple of four
+channels. Element-wise `add` wants identical output processor maps and matching
+dimensions, so project each branch to a common shape first. Either way the
+fusion happens on the accelerator and costs one inference.
+
+For temporal context, `data_buffer` with `buffer_insert` and `buffer_shift`
+keeps a rolling history in data memory; `networks/ai85-kinetics-actiontcn.yaml`
+in ai8x-synthesis is the worked example. That buffer survives between windows
+as long as `init` is called once and `start` per window, since `init` is what
+zeroizes.
+
+Two things bite here. The accelerator has one 8-bit fixed-point regime, so a
+modality whose values sit near zero vanishes unless the loader normalizes it or
+its branch gets its own `output_shift`. And the graph is static, so every
+branch runs on every window whether or not its sensor produced anything. Train
+with modality dropout if a sensor can fail.
+
+[ai8x-training]: https://github.com/analogdevicesinc/ai8x-training
+
 ### Generating a network
 
 `tools/cnn-gen.py` turns the output of [ai8xize.py] into that descriptor:
@@ -76,19 +149,9 @@ python3 tools/cnn-synth.py -o src/network.rs --prefix kws20 --softmax \
     --checkpoint-file trained/ai87-kws20_v3-qat8-q.pth.tar
 ```
 
-It runs the real generator into a scratch directory, verifies the result the
-same way, and passes every argument it does not recognize through untouched.
-`--device` defaults to MAX78002 and nothing else is accepted.
-
-izer's dependencies are pinned to versions newer ones cannot replace, so
-`tools/` is a [uv] project: `tools/pyproject.toml` and `tools/uv.lock` pin them
-and `uv run --project tools` builds the environment on first use. Nothing has
-to be installed first and nothing is written into the ai8x-synthesis checkout.
-Pass `--python` to use an interpreter that already has izer's dependencies
-instead.
-
-[ai8xize.py]: https://github.com/analogdevicesinc/ai8x-synthesis
-[uv]: https://docs.astral.sh/uv/
+It runs the real generator into a scratch directory and verifies the result the
+same way. Arguments it does not recognize reach `ai8xize.py` untouched. It
+defaults `--device` to MAX78002 and refuses any other device.
 
 ### Memory
 
