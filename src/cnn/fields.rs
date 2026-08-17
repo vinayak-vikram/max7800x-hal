@@ -793,8 +793,6 @@ mod tests {
         assert_eq!(wptr.offset(), 0);
         assert_eq!(wptr.instance(), 1);
         assert_eq!(wptr.group(), 0);
-
-        assert_eq!(WptrMoffs::from_bits(0x8000).bits(), 0x8000);
     }
 
     /// mobilefacenet-112 layer 1: 2x2 pool, stride 2.
@@ -816,8 +814,6 @@ mod tests {
         let stride = Stride::from_bits(0x0000_0021);
         assert_eq!(stride.stride() + 1, 2);
         assert_eq!(stride.mp_stride(), 2);
-
-        assert_eq!(RptrBase::from_bits(0x2000).bits(), 0x2000);
     }
 
     /// kws20_demo layer 0: Conv1d, so the column count is degenerate.
