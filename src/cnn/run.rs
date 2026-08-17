@@ -12,17 +12,17 @@ pub const fn ack_mask() -> u32 {
 /// `CTL` words for the direct input path, verified against generated `cnn.c`.
 /// The master arms with `CNN_EN` clear and every other quadrant with it set;
 /// inverting that hangs the accelerator.
-const STOP_SM: u32 = 0x0010_0008;
-const START_MASTER: u32 = 0x0010_0808;
-const START_OTHER: u32 = 0x0010_0809;
-const START_GO: u32 = 0x0010_0009;
+pub(super) const STOP_SM: u32 = 0x0010_0008;
+pub(super) const START_MASTER: u32 = 0x0010_0808;
+pub(super) const START_OTHER: u32 = 0x0010_0809;
+pub(super) const START_GO: u32 = 0x0010_0009;
 
 /// SRAM control word.
-const SRAM_CONTROL: u32 = 0x0000_040e;
+pub(super) const SRAM_CONTROL: u32 = 0x0000_040e;
 
 /// Zeroize commands
-const ZEROIZE_NO_BIAS: u32 = 0x0000_1880;
-const ZEROIZE_WITH_BIAS: u32 = 0x0000_1c80;
+pub(super) const ZEROIZE_NO_BIAS: u32 = 0x0000_1880;
+pub(super) const ZEROIZE_WITH_BIAS: u32 = 0x0000_1c80;
 
 macro_rules! each_quadrant {
     ($self:ident, |$q:ident| $body:block) => {{
@@ -146,96 +146,5 @@ impl Cnn<Enabled> {
     /// Release the master quadrant again after [`stop`](Cnn::stop).
     pub fn resume(&mut self) {
         self.q0.ctl().modify(|_, w| w.en().set_bit());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::cnn::MASTER_QUADRANT;
-    /// Init constants, cross-checked against the `cnn_init` of every shipped
-    /// example. `kws20_demo` has no bias and writes `0x1880`; the other seven
-    /// have bias and write `0x1c80`.
-    #[test]
-    fn init_constants_match_the_generated_sources() {
-        assert_eq!(SRAM_CONTROL, 0x0000_040e);
-        assert_eq!(ZEROIZE_NO_BIAS, 0x0000_1880);
-        assert_eq!(ZEROIZE_WITH_BIAS, 0x0000_1c80);
-        // Bias selection is the only difference between the two.
-        assert_eq!(ZEROIZE_WITH_BIAS ^ ZEROIZE_NO_BIAS, 1 << 10);
-        // Both run the zeroize, and neither runs any BIST.
-        for word in [ZEROIZE_NO_BIAS, ZEROIZE_WITH_BIAS] {
-            assert_ne!(word & (1 << 7), 0, "ZERO_RUN clear");
-            assert_eq!(word & 0b101_0101, 0, "a BIST run bit is set");
-        }
-    }
-
-    /// The arm-and-go sequence, cross-checked against `cnn_start` in
-    /// `kws20_demo`. The master arms with `CNN_EN` clear and the others with it
-    /// set; inverting that hangs the accelerator. Both words keep the APB clock
-    /// alive (bit 3) and use memory-express weight loading (bit 20).
-    #[test]
-    fn start_sequence_matches_the_generated_sources() {
-        assert_eq!(STOP_SM, 0x0010_0008);
-        assert_eq!(START_MASTER, 0x0010_0808);
-        assert_eq!(START_OTHER, 0x0010_0809);
-        assert_eq!(START_GO, 0x0010_0009);
-
-        // Bits 10:9 carry the master quadrant index.
-        assert_eq!((START_MASTER >> 9) & 0b11, MASTER_QUADRANT as u32);
-        assert_eq!(START_MASTER & 1, 0, "master must arm with CNN_EN clear");
-        assert_eq!(START_MASTER | 1, START_OTHER, "they differ only in CNN_EN");
-        for word in [STOP_SM, START_MASTER, START_OTHER, START_GO] {
-            assert_ne!(word & (1 << 3), 0, "{word:#010x} has CLK_EN clear");
-            assert_ne!(word & (1 << 20), 0, "{word:#010x} has MEXPRESS clear");
-        }
-    }
-
-    /// The generator folds `NO_PIPELINE` into every control word it builds, so
-    /// it cannot be written once at init and left alone.
-    #[test]
-    fn pipeline_contributes_to_every_control_word() {
-        assert_eq!(Pipeline::Enabled.ctl_bits(), 0);
-        assert_eq!(Pipeline::Disabled.ctl_bits(), 1 << 5);
-
-        let p = Pipeline::Disabled.ctl_bits();
-        for word in [STOP_SM, START_MASTER, START_OTHER, START_GO] {
-            assert_eq!(word & (1 << 5), 0, "{word:#010x} already has NO_PIPELINE");
-        }
-        assert_eq!(STOP_SM | p, 0x0010_0028);
-        assert_eq!(START_MASTER | p, 0x0010_0828);
-        assert_eq!(START_GO | p, 0x0010_0029);
-    }
-
-    /// The two acknowledge masks the generator emits. A third form exists for
-    /// one-shot mode, which this HAL does not expose.
-    #[test]
-    fn acknowledge_masks_match_the_generated_isr() {
-        // kws20_demo: `&= ~((1 << 12) | 1)`
-        // A streaming network also clears STREAM_EN, bit 14, which this HAL
-        // never sets.
-        assert_eq!(ack_mask(), (1 << 12) | 1);
-        // Clearing DONE is what makes the next completion detectable.
-        assert_ne!(ack_mask() & (1 << 12), 0);
-    }
-
-    /// `stop` and `resume` toggle the same bit the go word sets, so a stopped
-    /// network resumes exactly where the go left it.
-    #[test]
-    fn stop_and_resume_toggle_the_enable_bit() {
-        assert_eq!(START_GO & 1, 1);
-        assert_ne!(ack_mask() & 1, 0, "the ISR also clears CNN_EN");
-    }
-
-    /// `LCNT_MAX` takes hardware layer indices, so the last index is one less
-    /// than the layer count. Values from the shipped examples.
-    #[test]
-    fn layer_count_encoding() {
-        // kws20_demo: 9 layers, imagenet: 34, cifar-100-effnet2: 33,
-        // mobilefacenet-112: 73.
-        for (layers, expected) in [(9u32, 0x08u32), (34, 0x21), (33, 0x20), (73, 0x48)] {
-            let last = layers - 1;
-            assert_eq!(last | (0 << 8), expected, "{layers} layers");
-        }
     }
 }

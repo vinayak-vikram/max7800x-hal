@@ -31,7 +31,7 @@ pub mod run;
 pub mod validate;
 
 #[cfg(test)]
-mod golden;
+mod tests;
 
 pub use boost::{BoostPolarity, CnnBoost};
 pub use config::{emit_layer, LayerSink, MASTER_QUADRANT};
