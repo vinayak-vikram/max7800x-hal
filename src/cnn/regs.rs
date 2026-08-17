@@ -2,13 +2,12 @@
 //!
 //! All addresses are derived from the PAC base
 
-use super::fields::{with_decoded, LayerRegister, ALL_TYPED_REGS};
+use super::fields::{with_decoded, ALL_TYPED_REGS};
 
 pub const QUADRANTS: u8 = 4;
 pub const PROCESSORS_PER_QUADRANT: u8 = 16;
 pub const DATA_INSTANCES_PER_QUADRANT: u8 = 4;
 pub const MAX_LAYERS: u8 = 128;
-pub const MAX_STREAM_LAYERS: u8 = 8;
 
 /// Base address of quadrant 0
 const QUADRANT0_BASE: u32 = 0x5100_0000;
@@ -18,8 +17,6 @@ const QUADRANT_STRIDE: u32 = 0x0100_0000;
 const LAYER_BASE: u32 = 0x0010_0000;
 /// Address stride between layers within the register file
 const LAYER_STRIDE: u32 = 0x100;
-/// Offset of the streaming register file within a quadrant.
-const STREAM_BASE: u32 = 0x0010_8000;
 
 /// Base address of quadrant `q`
 #[inline]
@@ -161,33 +158,6 @@ impl Quadrant {
             addr: self.base() + LAYER_BASE + (n as u32) * LAYER_STRIDE,
         }
     }
-
-    /// Stream processing start, for streaming slot s
-    #[inline]
-    pub const fn stream_start(self, s: u8) -> Reg {
-        debug_assert!(s < MAX_STREAM_LAYERS);
-        Reg(self.base() + STREAM_BASE + (s as u32) * 4)
-    }
-
-    /// Stream processing delta, for streaming slot s
-    #[inline]
-    pub const fn stream_delta(self, s: u8) -> Reg {
-        debug_assert!(s < MAX_STREAM_LAYERS);
-        Reg(self.base() + STREAM_BASE + 0x20 + (s as u32) * 4)
-    }
-
-    /// Rollover, for streaming slot s
-    #[inline]
-    pub const fn rollover(self, s: u8) -> Reg {
-        debug_assert!(s < MAX_STREAM_LAYERS);
-        Reg(self.base() + STREAM_BASE + 0x40 + (s as u32) * 4)
-    }
-
-    /// Input frame size (not per-layer)
-    #[inline]
-    pub const fn frame_size(self) -> Reg {
-        Reg(self.base() + STREAM_BASE + 0x60)
-    }
 }
 
 /// The register file for one layer within one quadrant
@@ -201,15 +171,6 @@ impl LayerRegs {
     pub const fn reg(self, r: LayerReg) -> Reg {
         Reg(self.addr + r as u32)
     }
-    #[inline]
-    pub fn read_typed<R: LayerRegister>(self) -> R {
-        R::from_bits(self.reg(R::REG).read())
-    }
-    #[inline]
-    pub fn write_typed<R: LayerRegister>(self, value: R) {
-        self.reg(R::REG).write(value.bits())
-    }
-
     /// Decode all registers
     #[inline]
     pub fn dump(self, mut visit: impl FnMut(LayerReg, &dyn core::fmt::Debug)) {
@@ -217,86 +178,6 @@ impl LayerRegs {
             let bits = self.reg(reg).read();
             with_decoded(reg, bits, |value| visit(reg, value));
         }
-    }
-    #[inline]
-    pub const fn next(self) -> Reg {
-        self.reg(LayerReg::Next)
-    }
-    #[inline]
-    pub const fn rows(self) -> Reg {
-        self.reg(LayerReg::Rows)
-    }
-    #[inline]
-    pub const fn cols(self) -> Reg {
-        self.reg(LayerReg::Cols)
-    }
-    #[inline]
-    pub const fn oned(self) -> Reg {
-        self.reg(LayerReg::Oned)
-    }
-    #[inline]
-    pub const fn pool_rows(self) -> Reg {
-        self.reg(LayerReg::PoolRows)
-    }
-    #[inline]
-    pub const fn pool_cols(self) -> Reg {
-        self.reg(LayerReg::PoolCols)
-    }
-    #[inline]
-    pub const fn stride(self) -> Reg {
-        self.reg(LayerReg::Stride)
-    }
-    #[inline]
-    pub const fn wptr(self) -> Reg {
-        self.reg(LayerReg::Wptr)
-    }
-    #[inline]
-    pub const fn wptr_ts(self) -> Reg {
-        self.reg(LayerReg::WptrTs)
-    }
-    #[inline]
-    pub const fn wptr_mask(self) -> Reg {
-        self.reg(LayerReg::WptrMask)
-    }
-    #[inline]
-    pub const fn wptr_mp(self) -> Reg {
-        self.reg(LayerReg::WptrMp)
-    }
-    #[inline]
-    pub const fn rptr(self) -> Reg {
-        self.reg(LayerReg::Rptr)
-    }
-    #[inline]
-    pub const fn lctl(self) -> Reg {
-        self.reg(LayerReg::Lctl)
-    }
-    #[inline]
-    pub const fn lctl2(self) -> Reg {
-        self.reg(LayerReg::Lctl2)
-    }
-    #[inline]
-    pub const fn mcnt(self) -> Reg {
-        self.reg(LayerReg::Mcnt)
-    }
-    #[inline]
-    pub const fn moffs(self) -> Reg {
-        self.reg(LayerReg::Moffs)
-    }
-    #[inline]
-    pub const fn ochan(self) -> Reg {
-        self.reg(LayerReg::Ochan)
-    }
-    #[inline]
-    pub const fn tptr(self) -> Reg {
-        self.reg(LayerReg::Tptr)
-    }
-    #[inline]
-    pub const fn en(self) -> Reg {
-        self.reg(LayerReg::En)
-    }
-    #[inline]
-    pub const fn post(self) -> Reg {
-        self.reg(LayerReg::Post)
     }
 }
 
@@ -327,30 +208,18 @@ mod tests {
 
     #[test]
     fn layer_registers() {
+        let at = |q, n, r| Quadrant::new(q).layer(n).reg(r).addr();
         // kws20_demo, layer 0 quadrant 0
-        assert_eq!(Quadrant::new(0).layer(0).rows().addr(), 0x5110_0004);
-        assert_eq!(Quadrant::new(0).layer(0).cols().addr(), 0x5110_0008);
-        assert_eq!(Quadrant::new(0).layer(0).oned().addr(), 0x5110_000c);
-        assert_eq!(Quadrant::new(0).layer(0).post().addr(), 0x5110_004c);
-        assert_eq!(Quadrant::new(0).layer(0).en().addr(), 0x5110_0048);
+        assert_eq!(at(0, 0, LayerReg::Rows), 0x5110_0004);
+        assert_eq!(at(0, 0, LayerReg::Oned), 0x5110_000c);
+        assert_eq!(at(0, 0, LayerReg::En), 0x5110_0048);
+        assert_eq!(at(0, 0, LayerReg::Post), 0x5110_004c);
         // mobilefacenet-112, layer 3 quadrant 0
-        assert_eq!(Quadrant::new(0).layer(3).rows().addr(), 0x5110_0304);
-        assert_eq!(Quadrant::new(0).layer(3).tptr().addr(), 0x5110_0344);
+        assert_eq!(at(0, 3, LayerReg::Tptr), 0x5110_0344);
         // cifar-100-mobilenet-v2, layer 72 quadrant 3
-        assert_eq!(Quadrant::new(3).layer(72).rows().addr(), 0x5410_4804);
+        assert_eq!(at(3, 72, LayerReg::Rows), 0x5410_4804);
         // pascalvoc-retinanetv7_3, layer 115 quadrant 2
-        assert_eq!(Quadrant::new(2).layer(115).rows().addr(), 0x5310_7304);
-    }
-
-    #[test]
-    fn stream_registers() {
-        // mobilefacenet-112 quadrant 0
-        assert_eq!(Quadrant::new(0).stream_start(0).addr(), 0x5110_8000);
-        assert_eq!(Quadrant::new(0).stream_start(1).addr(), 0x5110_8004);
-        assert_eq!(Quadrant::new(0).stream_delta(1).addr(), 0x5110_8024);
-        assert_eq!(Quadrant::new(0).rollover(0).addr(), 0x5110_8040);
-        assert_eq!(Quadrant::new(0).rollover(1).addr(), 0x5110_8044);
-        assert_eq!(Quadrant::new(0).frame_size().addr(), 0x5110_8060);
+        assert_eq!(at(2, 115, LayerReg::Rows), 0x5310_7304);
     }
 
     #[test]
