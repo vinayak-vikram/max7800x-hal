@@ -3,6 +3,7 @@
 //! The datasheet is gee.
 //!
 
+pub mod boost;
 pub mod config;
 pub mod fields;
 pub mod memory;
@@ -13,6 +14,7 @@ pub mod validate;
 #[cfg(test)]
 mod golden;
 
+pub use boost::{BoostPolarity, CnnBoost};
 pub use config::{emit_layer, LayerSink, MASTER_QUADRANT};
 pub use network::{
     Direct, Fifo, InputMode, InputRegion, Layer, Network, OutputRegion, Stream, WeightRegion,
