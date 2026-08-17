@@ -9,6 +9,8 @@ use core::marker::PhantomData;
 
 /// How input data reaches the accelerator.
 pub trait InputMode: crate::Sealed {
+    /// Refuses a mode the HAL cannot drive, at compile time. See [`Fifo`].
+    const CHECK: () = ();
     /// Whether input arrives through the FIFO.
     const FIFO: bool;
     /// `CTL` value that halts the state machine, written during init.
@@ -23,6 +25,8 @@ pub trait InputMode: crate::Sealed {
 }
 
 pub struct Direct;
+
+/// Placeholder. Programming a `Network<Fifo>` is a compile error.
 pub struct Fifo;
 
 impl crate::Sealed for Direct {}
@@ -37,6 +41,7 @@ impl InputMode for Direct {
 }
 
 impl InputMode for Fifo {
+    const CHECK: () = panic!("FIFO input is not implemented; build the network with Direct");
     const FIFO: bool = true;
     const STOP_SM: u32 = 0x0010_8008;
     const START_MASTER: u32 = 0x0018_c808;
@@ -218,6 +223,14 @@ impl<'a, M: InputMode> Network<'a, M> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `Direct` passes the mode check. The `Fifo` half cannot be asserted
+    /// here: it is a const-eval panic, so a network built with it fails to
+    /// compile rather than failing a test.
+    #[test]
+    fn direct_passes_the_mode_check() {
+        let () = Direct::CHECK;
+    }
 
     /// Verified against generated `cnn.c`: `kws20_demo` for direct mode,
     /// `mobilefacenet-112` for FIFO. The spec records an earlier revision that

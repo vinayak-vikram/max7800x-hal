@@ -64,6 +64,7 @@ pub fn emit_layer(sink: &mut impl LayerSink, layer: &Layer, quadrant: u8) {
 impl super::Cnn<crate::gcr::clocks::Enabled> {
     /// Write every layer of `network` into the register file.
     pub fn configure<M: InputMode>(&mut self, network: &Network<M>) {
+        let () = M::CHECK;
         for (index, layer) in network.layers.iter().enumerate() {
             debug_assert!(
                 !layer.is_synthetic() || layer.master_only,

@@ -87,8 +87,9 @@ once, which is the limit a large input runs into first.
 
 Direct input only. FIFO input and streaming layers are not implemented: the
 target workload feeds buffered sample windows, which are already in RAM by the
-time the accelerator needs them. `Network::validate` rejects what it can detect
-of an unsupported network, and `cnn-gen.py` refuses to parse one.
+time the accelerator needs them. Programming a `Network<Fifo>` is a compile
+error, `Network::validate` rejects what it can detect of an unsupported
+network, and `cnn-gen.py` refuses to parse one.
 
 MAX78000 is out of scope — its layer register file is register-major with a
 32-layer cap, a different backend rather than a variation.

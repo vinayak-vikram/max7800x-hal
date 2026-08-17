@@ -13,7 +13,8 @@
 //!        -> start -> wait -> read_u32
 //! ```
 //!
-//! Direct input only. FIFO input and streaming layers are not implemented, and
+//! Direct input only. FIFO input and streaming layers are not implemented:
+//! programming a `Network<`[`Fifo`]`>` fails to compile, and
 //! [`Network::validate`] rejects what it can see of them.
 //!
 //! [`regs::Reg::write`] is one `write_volatile` at a computed address, the same
@@ -304,6 +305,7 @@ macro_rules! each_quadrant {
 impl Cnn<Enabled> {
     /// Initialize the accelerator
     pub fn init<M: InputMode>(&mut self, network: &Network<M>) {
+        let () = M::CHECK;
         let no_pipeline = matches!(self.pipeline, Pipeline::Disabled);
 
         // clk_en and pipeline selection
@@ -371,6 +373,7 @@ impl Cnn<Enabled> {
 
     /// Start inference.
     pub fn start<M: InputMode>(&mut self, network: &Network<M>) {
+        let () = M::CHECK;
         debug_assert!(
             !network.is_streaming() || M::FIFO,
             "a streaming network requires FIFO input"
