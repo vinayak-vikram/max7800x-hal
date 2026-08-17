@@ -81,18 +81,3 @@ impl super::Cnn<crate::gcr::clocks::Enabled> {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn master_quadrant_is_zero() {
-        assert_eq!(MASTER_QUADRANT, 0);
-        // The `CTL` arm words encode the master index in bits 10:9.
-        assert_eq!(
-            (super::super::START_MASTER >> 9) & 0b11,
-            MASTER_QUADRANT as u32
-        );
-    }
-}

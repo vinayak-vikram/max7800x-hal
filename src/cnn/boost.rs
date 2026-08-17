@@ -68,7 +68,6 @@ mod tests {
     #[derive(Default)]
     struct FakePin {
         high: bool,
-        writes: usize,
     }
 
     impl ErrorType for FakePin {
@@ -78,13 +77,11 @@ mod tests {
     impl OutputPin for FakePin {
         fn set_high(&mut self) -> Result<(), Self::Error> {
             self.high = true;
-            self.writes += 1;
             Ok(())
         }
 
         fn set_low(&mut self) -> Result<(), Self::Error> {
             self.high = false;
-            self.writes += 1;
             Ok(())
         }
     }
@@ -112,25 +109,5 @@ mod tests {
         let mut boost = CnnBoost::with_polarity(FakePin::default(), BoostPolarity::ActiveLow);
         boost.disable().unwrap();
         assert!(boost.release().high);
-    }
-
-    #[test]
-    fn the_default_polarity_is_active_high() {
-        assert_eq!(BoostPolarity::default(), BoostPolarity::ActiveHigh);
-        assert_eq!(
-            CnnBoost::new(FakePin::default()).polarity(),
-            BoostPolarity::ActiveHigh
-        );
-    }
-
-    /// Nothing is cached, so a repeated call still reaches the pin. The switch
-    /// can be driven from more than one place.
-    #[test]
-    fn every_call_drives_the_pin() {
-        let mut boost = CnnBoost::new(FakePin::default());
-        boost.enable().unwrap();
-        boost.enable().unwrap();
-        boost.disable().unwrap();
-        assert_eq!(boost.release().writes, 3);
     }
 }

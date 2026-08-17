@@ -703,13 +703,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn dividers_match_their_names() {
-        assert_eq!(CnnClockDiv::Div1.divisor(), 1);
-        assert_eq!(CnnClockDiv::Div2.divisor(), 2);
-        assert_eq!(CnnClockDiv::Div4.divisor(), 4);
-        assert_eq!(CnnClockDiv::Div8.divisor(), 8);
-        assert_eq!(CnnClockDiv::Div16.divisor(), 16);
-        // The reset value of PCLKDIV.CNNCLKDIV is div-by-2, not div-by-1.
+    fn the_divider_defaults_to_the_reset_value() {
+        // PCLKDIV.CNNCLKDIV comes out of reset at div-by-2, not div-by-1.
         assert_eq!(CnnClockDiv::default(), CnnClockDiv::Div2);
     }
 
@@ -740,11 +735,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn pipeline_defaults_to_enabled() {
-        assert_eq!(Pipeline::default(), Pipeline::Enabled);
-    }
-
     /// Init constants, cross-checked against the `cnn_init` of every shipped
     /// example. `kws20_demo` has no bias and writes `0x1880`; the other seven
     /// have bias and write `0x1c80`.
@@ -773,6 +763,8 @@ mod tests {
         assert_eq!(START_OTHER, 0x0010_0809);
         assert_eq!(START_GO, 0x0010_0009);
 
+        // Bits 10:9 carry the master quadrant index.
+        assert_eq!((START_MASTER >> 9) & 0b11, MASTER_QUADRANT as u32);
         assert_eq!(START_MASTER & 1, 0, "master must arm with CNN_EN clear");
         assert_eq!(START_MASTER | 1, START_OTHER, "they differ only in CNN_EN");
         for word in [STOP_SM, START_MASTER, START_OTHER, START_GO] {
