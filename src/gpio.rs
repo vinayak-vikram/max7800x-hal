@@ -136,12 +136,10 @@ impl<const P: u8, const N: u8, MODE: PinMode> Pin<P, N, MODE> {
     #[inline(always)]
     fn _into_af2(&mut self) {
         let gpio = unsafe { &*gpiox_ptr::<P>() };
-        // Set EN0 to 1
-        gpio.en0_set().write(|w| unsafe { w.bits(1 << N) });
         // Set EN1 to 1
         gpio.en1_set().write(|w| unsafe { w.bits(1 << N) });
-        // Set EN1 to 0
-        gpio.en1_clr().write(|w| unsafe { w.bits(1 << N) });
+        // Set EN0 to 0
+        gpio.en0_clr().write(|w| unsafe { w.bits(1 << N) });
     }
 
     #[doc(hidden)]
