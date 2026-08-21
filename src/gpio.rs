@@ -201,6 +201,22 @@ impl<const P: u8, const N: u8, MODE: PinMode> Pin<P, N, MODE> {
     pub fn is_low(&self) -> bool {
         self._is_low()
     }
+
+    /// Sets the pin power supply to VDDIO.
+    #[inline(always)]
+    pub fn set_power_vddio(&mut self) {
+        let gpio = unsafe { &*gpiox_ptr::<P>() };
+        gpio.vssel()
+            .modify(|r, w| unsafe { w.bits(r.bits() & !(1 << N)) });
+    }
+
+    /// Sets the pin power supply to VDDIOH.
+    #[inline(always)]
+    pub fn set_power_vddioh(&mut self) {
+        let gpio = unsafe { &*gpiox_ptr::<P>() };
+        gpio.vssel()
+            .modify(|r, w| unsafe { w.bits(r.bits() | (1 << N)) });
+    }
 }
 
 /// Methods for input pins.
@@ -264,22 +280,6 @@ impl<const P: u8, const N: u8> Pin<P, N, InputOutput> {
     #[inline(always)]
     pub fn is_set_low(&self) -> bool {
         self._is_set_low()
-    }
-
-    /// Sets the pin power supply to VDDIO.
-    #[inline(always)]
-    pub fn set_power_vddio(&mut self) {
-        let gpio = unsafe { &*gpiox_ptr::<P>() };
-        gpio.vssel()
-            .modify(|r, w| unsafe { w.bits(r.bits() & !(1 << N)) });
-    }
-
-    /// Sets the pin power supply to VDDIOH.
-    #[inline(always)]
-    pub fn set_power_vddioh(&mut self) {
-        let gpio = unsafe { &*gpiox_ptr::<P>() };
-        gpio.vssel()
-            .modify(|r, w| unsafe { w.bits(r.bits() | (1 << N)) });
     }
 }
 
