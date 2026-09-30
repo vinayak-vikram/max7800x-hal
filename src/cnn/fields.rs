@@ -94,15 +94,9 @@ macro_rules! count_register {
     ($name:ident) => {
         impl $name {
             field!(cnt, 0, 10);
-            field!(pad_cnt, 16, 2);
+            field!(pad, 16, 2);
             /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
             pub const DECLARED_BITS: u32 = 0x000303ff;
-
-            /// Padding on each side
-            #[inline]
-            pub const fn pad(self) -> u32 {
-                self.pad_cnt()
-            }
         }
 
         impl core::fmt::Debug for $name {

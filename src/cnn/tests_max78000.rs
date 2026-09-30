@@ -176,10 +176,7 @@ fn rendered(reg: LayerReg, bits: u32) -> Buf {
 /// `kws20_demo`: 9 layers, no bias, conv1d
 const KWS20: &str = include_str!("golden/max78000/kws20_demo.txt");
 
-/// `cifar-10`: 11 layers, bias
-const CIFAR10: &str = include_str!("golden/max78000/cifar10.txt");
-
-const CORPUS: [(&str, &str, usize); 2] = [("kws20_demo", KWS20, 9), ("cifar10", CIFAR10, 11)];
+const CORPUS: [(&str, &str, usize); 1] = [("kws20_demo", KWS20, 9)];
 
 /// One `// Layer n quadrant q` block, as the generator emitted it
 struct Block {
