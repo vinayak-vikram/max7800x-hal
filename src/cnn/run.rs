@@ -1,7 +1,9 @@
 //! Initialization and run control
 
 use super::network::Network;
-use super::{Cnn, Pipeline};
+use super::Cnn;
+#[cfg(feature = "max78002")]
+use super::Pipeline;
 use crate::gcr::clocks::Enabled;
 
 /// CTL bits a completion interrupt handler must clear.
@@ -20,8 +22,10 @@ pub(super) const START_GO: u32 = 0x0010_0009;
 /// SRAM control word.
 pub(super) const SRAM_CONTROL: u32 = 0x0000_040e;
 
-/// Zeroize commands
+/// Zeroize commands. The MAX78000 does not need one.
+#[cfg(feature = "max78002")]
 pub(super) const ZEROIZE_NO_BIAS: u32 = 0x0000_1880;
+#[cfg(feature = "max78002")]
 pub(super) const ZEROIZE_WITH_BIAS: u32 = 0x0000_1c80;
 
 macro_rules! each_quadrant {
@@ -48,13 +52,15 @@ macro_rules! each_quadrant {
 impl Cnn<Enabled> {
     /// Initialize the accelerator
     pub fn init(&mut self, network: &Network) {
-        let no_pipeline = matches!(self.pipeline, Pipeline::Disabled);
-
-        // clk_en and pipeline selection
-        each_quadrant!(self, |q| {
-            q.ctl()
-                .write(|w| w.clk_en().set_bit().no_pipeline().bit(no_pipeline));
-        });
+        // The MAX78002 clears its register file below, which needs the clocks
+        #[cfg(feature = "max78002")]
+        {
+            let no_pipeline = matches!(self.pipeline, Pipeline::Disabled);
+            each_quadrant!(self, |q| {
+                q.ctl()
+                    .write(|w| w.clk_en().set_bit().no_pipeline().bit(no_pipeline));
+            });
+        }
 
         // Ready-select 0, no quadrant powered down.
         self.cnn.aon().write(|w| unsafe { w.bits(0) });
@@ -63,25 +69,32 @@ impl Cnn<Enabled> {
             q.sram().write(|w| unsafe { w.bits(SRAM_CONTROL) });
         });
 
-        let zeroize = if network.has_bias() {
-            ZEROIZE_WITH_BIAS
-        } else {
-            ZEROIZE_NO_BIAS
-        };
-        // Start all four before polling any of them; they run concurrently.
-        each_quadrant!(self, |q| {
-            q.test().write(|w| unsafe { w.bits(zeroize) });
-        });
-        each_quadrant!(self, |q| {
-            while q.test().read().zero_done().bit_is_clear() {}
-        });
-        each_quadrant!(self, |q| {
-            q.test().write(|w| unsafe { w.bits(0) });
-        });
+        #[cfg(feature = "max78002")]
+        {
+            let zeroize = if network.has_bias() {
+                ZEROIZE_WITH_BIAS
+            } else {
+                ZEROIZE_NO_BIAS
+            };
+            // Start all four before polling any of them; they run concurrently.
+            each_quadrant!(self, |q| {
+                q.test().write(|w| unsafe { w.bits(zeroize) });
+            });
+            each_quadrant!(self, |q| {
+                while q.test().read().zero_done().bit_is_clear() {}
+            });
+            each_quadrant!(self, |q| {
+                q.test().write(|w| unsafe { w.bits(0) });
+            });
+        }
 
-        let stop = STOP_SM | self.pipeline.ctl_bits();
+        let stop = STOP_SM | self.ctl_bits();
         each_quadrant!(self, |q| {
             q.ctl().write(|w| unsafe { w.bits(stop) });
+            #[cfg(feature = "max78000")]
+            q.lcnt()
+                .write(|w| unsafe { w.last().bits(network.last_layer) });
+            #[cfg(feature = "max78002")]
             q.lcnt().write(|w| unsafe {
                 w.last()
                     .bits(network.last_layer)
@@ -91,9 +104,17 @@ impl Cnn<Enabled> {
         });
     }
 
+    /// Mode bits every `CTL` write carries
+    fn ctl_bits(&self) -> u32 {
+        #[cfg(feature = "max78000")]
+        return 0;
+        #[cfg(feature = "max78002")]
+        return self.pipeline.ctl_bits();
+    }
+
     /// Start inference.
     pub fn start(&mut self) {
-        let pipeline = self.pipeline.ctl_bits();
+        let pipeline = self.ctl_bits();
         self.q0
             .ctl()
             .write(|w| unsafe { w.bits(START_MASTER | pipeline) });

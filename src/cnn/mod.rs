@@ -1,10 +1,11 @@
-//! # CNN Accelerator (impl for MAX78002)
+//! # CNN Accelerator
 //!
 //! The datasheet is gee.
 //!
-//! Four CNNx16 quadrants, 16 processors each, 128 layers. A [`Network`] is a
-//! `const` descriptor produced by `tools/cnn-gen.py`; nothing here computes a
-//! register value.
+//! Four CNNx16 quadrants, 16 processors each; 32 layers on the MAX78000 and
+//! 128 on the MAX78002. A [`Network`] is a `const` descriptor produced by
+//! `tools/cnn-gen.py` for one of the two; nothing here computes a register
+//! value.
 //!
 //! Call order, matching the generated C:
 //!
@@ -30,16 +31,17 @@ pub mod regs;
 pub mod run;
 pub mod validate;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "max78002"))]
 mod tests;
+#[cfg(all(test, feature = "max78000"))]
+mod tests_max78000;
 
 pub use boost::{BoostPolarity, CnnBoost};
 pub use config::{emit_layer, LayerSink, MASTER_QUADRANT};
 pub use network::{InputRegion, Layer, Network, OutputRegion, WeightRegion};
-pub use power::{
-    CnnClockDiv, CnnClockSource, Pipeline, LOAD_SWITCH_SETTLE_MS, MAX_NON_PIPELINED_FREQUENCY,
-    MAX_PIPELINED_FREQUENCY,
-};
+pub use power::{CnnClockDiv, CnnClockSource, LOAD_SWITCH_SETTLE_MS};
+#[cfg(feature = "max78002")]
+pub use power::{Pipeline, MAX_NON_PIPELINED_FREQUENCY, MAX_PIPELINED_FREQUENCY};
 pub use regs::{LayerReg, LayerRegs, Quadrant, Reg};
 pub use run::ack_mask;
 pub use validate::Invalid;
@@ -60,6 +62,7 @@ pub struct Cnn<S: CnnState> {
     q2: crate::pac::Cnnx16_2,
     q3: crate::pac::Cnnx16_3,
     gcfr: crate::pac::Gcfr,
+    #[cfg(feature = "max78002")]
     pipeline: Pipeline,
     source: Option<CnnClockSource>,
     divider: CnnClockDiv,
@@ -68,6 +71,7 @@ pub struct Cnn<S: CnnState> {
 
 impl<S: CnnState> Cnn<S> {
     /// The configured pipeline mode
+    #[cfg(feature = "max78002")]
     pub const fn pipeline(&self) -> Pipeline {
         self.pipeline
     }

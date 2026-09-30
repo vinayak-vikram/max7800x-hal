@@ -3,35 +3,61 @@
 
 use super::regs::{quadrant_base, DATA_INSTANCES_PER_QUADRANT, PROCESSORS_PER_QUADRANT, QUADRANTS};
 
-/// Offset of the bias memory within a quadrant.
-const BIAS_BASE: u32 = 0x0018_0000;
-/// Offset of the TRAM within a quadrant.
-const TRAM_BASE: u32 = 0x0020_0000;
-/// Offset of the kernel memory within a quadrant.
-const KERNEL_BASE: u32 = 0x0040_0000;
-/// Offset of the data SRAM within a quadrant.
-const DATA_BASE: u32 = 0x0080_0000;
-/// Address stride between kernel memories, and between data SRAM instances.
-const MEMORY_STRIDE: u32 = 0x0002_0000;
-/// Address stride between TRAM instances.
-const TRAM_STRIDE: u32 = 0x0001_0000;
+#[cfg(feature = "max78000")]
+mod chip {
+    pub const BIAS_BASE: u32 = 0x0000_8000;
+    pub const TRAM_BASE: u32 = 0x0001_0000;
+    pub const KERNEL_BASE: u32 = 0x0008_0000;
+    pub const DATA_BASE: u32 = 0x0030_0000;
+    pub const KERNEL_STRIDE: u32 = 0x0000_4000;
+    pub const DATA_STRIDE: u32 = 0x0000_8000;
+    pub const TRAM_STRIDE: u32 = 0x0000_4000;
+    pub const BIAS_ENTRIES: u32 = 512;
+    pub const TRAM_WORDS: u32 = 3072;
+    pub const DATA_INSTANCE_STRIDE_WORDS: u32 = 2048;
+    pub const DATA_INSTANCE_WORDS: u32 = 2048;
+    pub const TOTAL_KERNEL_BYTES: u32 = 442_368;
+    pub const KERNELS_PER_PROCESSOR: u32 = 768;
+    pub const KERNELS_FIRST_PROCESSOR: u32 = KERNELS_PER_PROCESSOR;
+}
+
+#[cfg(feature = "max78002")]
+mod chip {
+    pub const BIAS_BASE: u32 = 0x0018_0000;
+    pub const TRAM_BASE: u32 = 0x0020_0000;
+    pub const KERNEL_BASE: u32 = 0x0040_0000;
+    pub const DATA_BASE: u32 = 0x0080_0000;
+    pub const KERNEL_STRIDE: u32 = 0x0002_0000;
+    pub const DATA_STRIDE: u32 = 0x0002_0000;
+    pub const TRAM_STRIDE: u32 = 0x0001_0000;
+    pub const BIAS_ENTRIES: u32 = 2048;
+    pub const TRAM_WORDS: u32 = 12288;
+    pub const DATA_INSTANCE_STRIDE_WORDS: u32 = 8192;
+    pub const DATA_INSTANCE_WORDS: u32 = 5120;
+    pub const TOTAL_KERNEL_BYTES: u32 = 2_396_160;
+    pub const KERNELS_PER_PROCESSOR: u32 = 4096;
+    /// The extra is for input-layer processing.
+    pub const KERNELS_FIRST_PROCESSOR: u32 = KERNELS_PER_PROCESSOR + 1024;
+}
+
+use chip::{BIAS_BASE, DATA_BASE, DATA_STRIDE, KERNEL_BASE, KERNEL_STRIDE, TRAM_BASE, TRAM_STRIDE};
+
 /// Bias entries per quadrant.
-pub const BIAS_ENTRIES: u32 = 2048;
-/// TRAM words per processor.
-pub const TRAM_WORDS: u32 = 12288;
-/// Address space of one data SRAM window, shared by four processors.
-pub const DATA_WINDOW_BYTES: u32 = MEMORY_STRIDE;
+pub use chip::BIAS_ENTRIES;
 /// Address space allotted to one processor within a data SRAM window, in words.
-pub const DATA_INSTANCE_STRIDE_WORDS: u32 = 8192;
+pub use chip::DATA_INSTANCE_STRIDE_WORDS;
 /// Words actually backed by memory within one processor's slot.
-pub const DATA_INSTANCE_WORDS: u32 = 5120;
-/// Total kernel memory across the whole accelerator, in bytes.
-pub const TOTAL_KERNEL_BYTES: u32 = 2_396_160;
-/// Kernels available to a processor that is not first in its quadrant.
-pub const KERNELS_PER_PROCESSOR: u32 = 4096;
+pub use chip::DATA_INSTANCE_WORDS;
 /// Kernels available to the first processor of each quadrant.
-/// Extra is for input-layer processing.
-pub const KERNELS_FIRST_PROCESSOR: u32 = KERNELS_PER_PROCESSOR + 1024;
+pub use chip::KERNELS_FIRST_PROCESSOR;
+/// Kernels available to a processor that is not first in its quadrant.
+pub use chip::KERNELS_PER_PROCESSOR;
+/// Total kernel memory across the whole accelerator, in bytes.
+pub use chip::TOTAL_KERNEL_BYTES;
+/// TRAM words per processor.
+pub use chip::TRAM_WORDS;
+/// Address space of one data SRAM window, shared by four processors.
+pub const DATA_WINDOW_BYTES: u32 = DATA_STRIDE;
 
 /// Address of the bias memory for `quadrant`.
 #[inline]
@@ -53,7 +79,7 @@ pub const fn tram_addr(quadrant: u8, processor: u8) -> u32 {
 pub const fn kernel_addr(quadrant: u8, processor: u8) -> u32 {
     debug_assert!(quadrant < QUADRANTS);
     debug_assert!(processor < PROCESSORS_PER_QUADRANT);
-    quadrant_base(quadrant) + KERNEL_BASE + (processor as u32) * MEMORY_STRIDE
+    quadrant_base(quadrant) + KERNEL_BASE + (processor as u32) * KERNEL_STRIDE
 }
 
 /// Address of data SRAM `instance` within `quadrant`.
@@ -62,7 +88,7 @@ pub const fn kernel_addr(quadrant: u8, processor: u8) -> u32 {
 pub const fn data_addr(quadrant: u8, instance: u8) -> u32 {
     debug_assert!(quadrant < QUADRANTS);
     debug_assert!(instance < DATA_INSTANCES_PER_QUADRANT);
-    quadrant_base(quadrant) + DATA_BASE + (instance as u32) * MEMORY_STRIDE
+    quadrant_base(quadrant) + DATA_BASE + (instance as u32) * DATA_STRIDE
 }
 
 /// Number of kernels addressable by `processor` within its quadrant
@@ -123,7 +149,7 @@ pub fn write_data(quadrant: u8, instance: u8, word_offset: u32, src: &[u32]) {
 }
 
 /// Address space of one processor's kernel memory window.
-pub const KERNEL_WINDOW_BYTES: u32 = MEMORY_STRIDE;
+pub const KERNEL_WINDOW_BYTES: u32 = KERNEL_STRIDE;
 
 #[inline]
 pub const fn kernel_burst_fits(offset: u32, words: usize) -> bool {

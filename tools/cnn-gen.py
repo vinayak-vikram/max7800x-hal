@@ -2,7 +2,9 @@
 """Turn an ai8xize-generated network into a Rust `Network` descriptor.
 
 Reads the `cnn.c`, `weights.h` and `main.c` that `ai8xize.py` emits for a
-MAX78002 target and writes a module defining one `const NETWORK`.
+MAX78000 or MAX78002 target and writes a module defining one `const NETWORK`.
+The device is recognised from the addresses `cnn.c` writes; the HAL crate must
+be built with the matching feature.
 
 Register values are emitted as `from_bits(0x...)` rather than builder chains.
 izer has already computed each word; decomposing it into named fields would
@@ -22,52 +24,101 @@ import sys
 from collections import namedtuple
 from pathlib import Path
 
-QUADRANT_BASE = 0x5100_0000
-QUADRANT_STRIDE = 0x0100_0000
-LAYER_BASE = 0x0010_0000
-KERNEL_BASE = 0x0040_0000
-BIAS_BASE = 0x0018_0000
-DATA_BASE = 0x0080_0000
-MEMORY_STRIDE = 0x0002_0000
+Device = namedtuple(
+    "Device",
+    "name quadrant_base quadrant_stride max_layers layer_file kernel_base "
+    "kernel_stride bias_base data_base data_stride registers optional emit_order",
+)
+
+# Registers are keyed by `LayerReg`'s value: the offset of layer 0's copy from
+# the quadrant base on the MAX78000, and from the layer's own block on the
+# MAX78002. Each entry is offset, Layer field, value type, and whether the
+# field is per quadrant.
+MAX78000 = Device(
+    name="MAX78000",
+    quadrant_base=0x5010_0000,
+    quadrant_stride=0x0040_0000,
+    max_layers=32,
+    layer_file=None,
+    kernel_base=0x0008_0000,
+    kernel_stride=0x0000_4000,
+    bias_base=0x0000_8000,
+    data_base=0x0030_0000,
+    data_stride=0x0000_8000,
+    registers=[
+        (0x010, "rows", "Rcnt", False),
+        (0x090, "cols", "Ccnt", False),
+        (0x110, "oned", "Oned", False),
+        (0x190, "pool_rows", "Prcnt", False),
+        (0x210, "pool_cols", "Pccnt", False),
+        (0x290, "stride", "Stride", False),
+        (0x310, "wptr", "WptrBase", True),
+        (0x390, "wptr_ts", "WptrToffs", False),
+        (0x410, "wptr_moffs", "WptrMoffs", False),
+        (0x490, "wptr_choffs", "WptrChoffs", False),
+        (0x510, "rptr", "RptrBase", False),
+        (0x590, "lctl", "Lctl", True),
+        (0x610, "mcnt", "Mcnt", False),
+        (0x690, "tptr", "Tptr", False),
+        (0x710, "ena", "Ena", True),
+        (0x790, "post", "Post", True),
+        (0xA10, "lctl2", "Lctl2", False),
+    ],
+    optional={0x410},
+    # Must match `emit_layer` in src/cnn/config.rs.
+    emit_order=[
+        0x010, 0x090, 0x190, 0x210, 0x290, 0x310, 0x390, 0x410, 0x490,
+        0x510, 0x590, 0xA10, 0x610, 0x110, 0x690, 0x790, 0x710,
+    ],
+)
+
+MAX78002 = Device(
+    name="MAX78002",
+    quadrant_base=0x5100_0000,
+    quadrant_stride=0x0100_0000,
+    max_layers=128,
+    layer_file=0x0010_0000,
+    kernel_base=0x0040_0000,
+    kernel_stride=0x0002_0000,
+    bias_base=0x0018_0000,
+    data_base=0x0080_0000,
+    data_stride=0x0002_0000,
+    registers=[
+        (0x00, "next", "Nxtlyr", False),
+        (0x04, "rows", "Rcnt", False),
+        (0x08, "cols", "Ccnt", False),
+        (0x0C, "oned", "Oned", False),
+        (0x10, "pool_rows", "Prcnt", False),
+        (0x14, "pool_cols", "Pccnt", False),
+        (0x18, "stride", "Stride", False),
+        (0x1C, "wptr", "WptrBase", True),
+        (0x20, "wptr_ts", "WptrToffs", False),
+        (0x24, "wptr_moffs", "WptrMoffs", False),
+        (0x28, "wptr_choffs", "WptrChoffs", False),
+        (0x2C, "rptr", "RptrBase", False),
+        (0x30, "lctl", "Lctl", True),
+        (0x34, "lctl2", "Lctl2", False),
+        (0x38, "mcnt1", "Mcnt1", False),
+        (0x3C, "mcnt2", "Mcnt2", False),
+        (0x40, "ochan", "Ochan", False),
+        (0x44, "tptr", "Tptr", False),
+        (0x48, "ena", "Ena", True),
+        (0x4C, "post", "Post", True),
+    ],
+    optional={0x24, 0x38},
+    # Must match `emit_layer` in src/cnn/config.rs.
+    emit_order=[
+        0x00, 0x04, 0x08, 0x10, 0x14, 0x18, 0x1C, 0x20, 0x24, 0x28,
+        0x2C, 0x30, 0x34, 0x38, 0x3C, 0x40, 0x0C, 0x44, 0x4C, 0x48,
+    ],
+)
+
 QUADRANTS = 4
 
-# Quadrant control block: LCNT_MAX holds the last layer in [7:0] and the first
-# in [15:8]. Note SRAM control sits at 0x04, so matching that reads 0x040e.
+# Quadrant control block offset of LCNT_MAX. The MAX78000 holds only the last
+# layer, in [4:0]; the MAX78002 holds the last in [7:0] and the first in
+# [15:8]. SRAM control sits at 0x04, so matching that reads 0x040e.
 LCNT_OFFSET = 0x08
-MAX_LAYERS = 128
-
-# Offset, Layer field, value type, and whether the field is per quadrant.
-REGISTERS = [
-    (0x00, "next", "Nxtlyr", False),
-    (0x04, "rows", "Rcnt", False),
-    (0x08, "cols", "Ccnt", False),
-    (0x0C, "oned", "Oned", False),
-    (0x10, "pool_rows", "Prcnt", False),
-    (0x14, "pool_cols", "Pccnt", False),
-    (0x18, "stride", "Stride", False),
-    (0x1C, "wptr", "WptrBase", True),
-    (0x20, "wptr_ts", "WptrToffs", False),
-    (0x24, "wptr_moffs", "WptrMoffs", False),
-    (0x28, "wptr_choffs", "WptrChoffs", False),
-    (0x2C, "rptr", "RptrBase", False),
-    (0x30, "lctl", "Lctl", True),
-    (0x34, "lctl2", "Lctl2", False),
-    (0x38, "mcnt1", "Mcnt1", False),
-    (0x3C, "mcnt2", "Mcnt2", False),
-    (0x40, "ochan", "Ochan", False),
-    (0x44, "tptr", "Tptr", False),
-    (0x48, "ena", "Ena", True),
-    (0x4C, "post", "Post", True),
-]
-
-BY_OFFSET = {off: (name, ty, per_q) for off, name, ty, per_q in REGISTERS}
-OPTIONAL = {0x24, 0x38}
-
-# Must match `emit_layer` in src/cnn/config.rs.
-EMIT_ORDER = [
-    0x00, 0x04, 0x08, 0x10, 0x14, 0x18, 0x1C, 0x20, 0x24, 0x28,
-    0x2C, 0x30, 0x34, 0x38, 0x3C, 0x40, 0x0C, 0x44, 0x4C, 0x48,
-]
 
 POKE = re.compile(
     r"\*\(\(volatile uint32_t \*\)\s*0x([0-9a-f]{8})\)\s*= 0x([0-9a-f]{8});"
@@ -92,7 +143,41 @@ def section(text, signature, end="return CNN_OK;"):
     return text[start : text.index(end, start)]
 
 
-def parse_layers(cnn_c):
+def detect(cnn_c):
+    """The device whose quadrant 0 control register cnn_init writes."""
+    body = section(cnn_c, "int cnn_init(void)") or ""
+    for device in (MAX78000, MAX78002):
+        if f"0x{device.quadrant_base:08x}" in body:
+            return device
+    sys.exit("cnn_init writes neither a MAX78000 nor a MAX78002 quadrant")
+
+
+def split(device, addr):
+    """(quadrant, offset within the quadrant) of an accelerator address."""
+    quadrant, inner = divmod(addr - device.quadrant_base, device.quadrant_stride)
+    if not 0 <= quadrant < QUADRANTS:
+        sys.exit(f"{addr:#010x} is outside the {device.name} quadrants")
+    return quadrant, inner
+
+
+def layer_register(device, inner):
+    """(layer, register offset) of a register file address, or None."""
+    if device.layer_file is not None:
+        if inner >> 20 != device.layer_file >> 20:
+            return None
+        index, offset = (inner & 0xFFFFF) >> 8, inner & 0xFF
+    else:
+        for offset, *_ in device.registers:
+            if 0 <= inner - offset < 4 * device.max_layers:
+                index = (inner - offset) // 4
+                break
+        else:
+            return None
+    known = any(offset == reg for reg, *_ in device.registers)
+    return (index, offset) if known and index < device.max_layers else None
+
+
+def parse_layers(device, cnn_c):
     """Layer register values, indexed by layer then quadrant then offset."""
     body = section(cnn_c, "int cnn_configure(void)")
     if body is None:
@@ -102,27 +187,27 @@ def parse_layers(cnn_c):
     order = []
     for m in POKE.finditer(body):
         addr, value = int(m.group(1), 16), int(m.group(2), 16)
-        quadrant = (addr >> 24) - 0x51
-        inner = addr & 0x00FF_FFFF
-        if not 0 <= quadrant < QUADRANTS or inner >> 20 != 1:
-            sys.exit(f"unexpected configure write to {addr:#010x}")
-        index, offset = (inner & 0xFFFFF) >> 8, inner & 0xFF
-        if index >= MAX_LAYERS or offset not in BY_OFFSET:
+        quadrant, inner = split(device, addr)
+        found = layer_register(device, inner)
+        if found is None:
             sys.exit(
                 f"write to {addr:#010x} is not a layer register. Streaming and "
                 "FIFO networks configure registers this HAL does not support."
             )
+        index, offset = found
         layers.setdefault(index, {}).setdefault(quadrant, {})[offset] = value
         order.append((index, quadrant, offset, value))
     return layers, order
 
 
-def parse_layer_range(cnn_c):
+def parse_layer_range(device, cnn_c):
     """`first_layer` and `last_layer`, from the LCNT_MAX write in cnn_init."""
     body = section(cnn_c, "int cnn_init(void)")
     for m in POKE.finditer(body):
         addr, value = int(m.group(1), 16), int(m.group(2), 16)
-        if addr & 0x00FF_FFFF == LCNT_OFFSET:
+        if addr - device.quadrant_base == LCNT_OFFSET:
+            if device.layer_file is None:
+                return 0, value & 0x1F
             return value >> 8 & 0xFF, value & 0xFF
     sys.exit("cnn_init has no layer count write")
 
@@ -142,7 +227,7 @@ def parse_blob(header, name):
     return [int(v, 0) for v in re.findall(r"0x[0-9a-fA-F]+|-?\b\d+\b", values)]
 
 
-def parse_weights(header):
+def parse_weights(device, header):
     """Weight regions, from the self-describing `kernels` blob."""
     words = parse_blob(header, "KERNELS")
     if words is None:
@@ -154,15 +239,13 @@ def parse_weights(header):
         data = words[i + 2 : i + 2 + length]
         i += 2 + length
 
-        quadrant = (addr >> 24) - 0x51
-        inner = addr & 0x00FF_FFFF
-        processor = (inner - KERNEL_BASE) // MEMORY_STRIDE
-        offset = (inner - KERNEL_BASE) % MEMORY_STRIDE
+        quadrant, inner = split(device, addr)
+        processor, offset = divmod(inner - device.kernel_base, device.kernel_stride)
         regions.append((quadrant, processor, offset, data))
     return regions
 
 
-def parse_bias(cnn_c, header):
+def parse_bias(device, cnn_c, header):
     """Per-quadrant bias tables, or None when the network has no bias."""
     body = section(cnn_c, "int cnn_load_bias(void)")
     calls = re.findall(
@@ -175,7 +258,7 @@ def parse_bias(cnn_c, header):
 
     tables = [[] for _ in range(QUADRANTS)]
     for addr, symbol, length in calls:
-        quadrant = (int(addr, 16) >> 24) - 0x51
+        quadrant, _ = split(device, int(addr, 16))
         values = parse_blob(header, symbol.upper())
         if values is None:
             sys.exit(f"weights.h has no {symbol}")
@@ -183,26 +266,22 @@ def parse_bias(cnn_c, header):
     return tables
 
 
-def parse_regions(text, pattern):
-    """(quadrant, instance, word, len) for each data memory run."""
-    regions = []
-    for addr, length in pattern.findall(text):
-        addr = int(addr, 16)
-        quadrant = (addr >> 24) - 0x51
-        inner = (addr & 0x00FF_FFFF) - DATA_BASE
-        instance, byte = divmod(inner, MEMORY_STRIDE)
-        regions.append((quadrant, instance, byte // 4, int(length)))
-    return regions
+def data_region(device, addr, length):
+    """(quadrant, instance, word, len) of a data memory run."""
+    quadrant, inner = split(device, addr)
+    instance, byte = divmod(inner - device.data_base, device.data_stride)
+    return quadrant, instance, byte // 4, length
 
 
-def parse_input(main_c):
-    return parse_regions(
-        main_c,
-        re.compile(r"memcpy32\(\(uint32_t \*\)\s*0x([0-9a-f]{8}),\s*\w+,\s*(\d+)\)"),
-    )
+def parse_input(device, main_c):
+    pattern = re.compile(r"memcpy32\(\(uint32_t \*\)\s*0x([0-9a-f]{8}),\s*\w+,\s*(\d+)\)")
+    return [
+        data_region(device, int(addr, 16), int(length))
+        for addr, length in pattern.findall(main_c)
+    ]
 
 
-def parse_output(cnn_c):
+def parse_output(device, cnn_c):
     """Output runs, from the unrolled pointer walk in cnn_unload."""
     body = section(cnn_c, "int cnn_unload(uint32_t *out_buf)", "return CNN_OK;")
     if body is None:
@@ -220,16 +299,10 @@ def parse_output(cnn_c):
     if addr is not None:
         regions.append((addr, count))
 
-    out = []
-    for addr, count in regions:
-        quadrant = (addr >> 24) - 0x51
-        inner = (addr & 0x00FF_FFFF) - DATA_BASE
-        instance, byte = divmod(inner, MEMORY_STRIDE)
-        out.append((quadrant, instance, byte // 4, count))
-    return out
+    return [data_region(device, addr, count) for addr, count in regions]
 
 
-Model = namedtuple("Model", "layers order first last weights bias inputs outputs")
+Model = namedtuple("Model", "device layers order first last weights bias inputs outputs")
 
 
 def parse_network(network):
@@ -239,27 +312,29 @@ def parse_network(network):
     header = find(source.parent, "weights.h").read_text()
     main_c = "".join(p.read_text() for p in network.rglob("main.c"))
 
-    layers, order = parse_layers(cnn_c)
-    first, last = parse_layer_range(cnn_c)
+    device = detect(cnn_c)
+    layers, order = parse_layers(device, cnn_c)
+    first, last = parse_layer_range(device, cnn_c)
     return Model(
+        device,
         layers,
         order,
         first,
         last,
-        parse_weights(header),
-        parse_bias(cnn_c, header),
-        parse_input(main_c),
-        parse_output(cnn_c),
+        parse_weights(device, header),
+        parse_bias(device, cnn_c, header),
+        parse_input(device, main_c),
+        parse_output(device, cnn_c),
     )
 
 
-def replay(layers):
+def replay(device, layers):
     """The poke list the HAL would emit for this model, in emit order."""
     out = []
     for index in sorted(layers):
         for quadrant in sorted(layers[index]):
             values = layers[index][quadrant]
-            for offset in EMIT_ORDER:
+            for offset in device.emit_order:
                 value = values.get(offset, 0)
                 if value != 0:
                     out.append((index, quadrant, offset, value))
@@ -268,7 +343,7 @@ def replay(layers):
 
 def verify(model):
     expected = list(model.order)
-    actual = replay(model.layers)
+    actual = replay(model.device, model.layers)
     if actual == expected:
         print(f"verify: {len(actual)} writes match", file=sys.stderr)
         return 0
@@ -285,10 +360,10 @@ def verify(model):
     return 1
 
 
-def rust_layer(index, quadrants):
+def rust_layer(device, index, quadrants):
     """One `Layer` literal, listing only the registers that were written."""
     shared, per_quadrant = [], {}
-    for offset, name, ty, per_q in REGISTERS:
+    for offset, name, ty, per_q in device.registers:
         if per_q:
             values = [quadrants.get(q, {}).get(offset, 0) for q in range(QUADRANTS)]
             if any(values):
@@ -298,7 +373,7 @@ def rust_layer(index, quadrants):
         if value == 0:
             continue
         literal = f"{ty}::from_bits({value:#010x})"
-        shared.append(f"        {name}: Some({literal})," if offset in OPTIONAL
+        shared.append(f"        {name}: Some({literal})," if offset in device.optional
                       else f"        {name}: {literal},")
 
     lines = [f"    // layer {index}", "    Layer {"]
@@ -319,7 +394,7 @@ def rust_slice(name, ty, count, lines):
 def emit(name, model, tool="cnn-gen.py"):
     layers, weights, bias = model.layers, model.weights, model.bias
     out = [
-        f"// Generated by tools/{tool}. Do not edit.",
+        f"// Generated by tools/{tool} for the {model.device.name}. Do not edit.",
         "",
         "use max7800x_hal::cnn::fields::*;",
         "use max7800x_hal::cnn::{InputRegion, Layer, Network, OutputRegion, "
@@ -329,7 +404,7 @@ def emit(name, model, tool="cnn-gen.py"):
 
     body = []
     for index in sorted(layers):
-        body += rust_layer(index, layers[index])
+        body += rust_layer(model.device, index, layers[index])
     out += rust_slice("LAYERS", "Layer", len(layers), body) + [""]
 
     for n, (_, _, _, data) in enumerate(weights):
@@ -395,7 +470,7 @@ def main():
         return 0
 
     args.output.write_text(emit(args.name or args.network.name, model))
-    print(f"wrote {args.output} ({len(model.layers)} layers)")
+    print(f"wrote {args.output} ({model.device.name}, {len(model.layers)} layers)")
     return 0
 
 

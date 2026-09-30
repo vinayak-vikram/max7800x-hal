@@ -7,16 +7,34 @@ use super::fields::{with_decoded, ALL_TYPED_REGS};
 pub const QUADRANTS: u8 = 4;
 pub const PROCESSORS_PER_QUADRANT: u8 = 16;
 pub const DATA_INSTANCES_PER_QUADRANT: u8 = 4;
-pub const MAX_LAYERS: u8 = 128;
 
-/// Base address of quadrant 0
-const QUADRANT0_BASE: u32 = 0x5100_0000;
-/// Address stride between quadrants.
-const QUADRANT_STRIDE: u32 = 0x0100_0000;
-/// Offset of the per-layer register file within a quadrant
-const LAYER_BASE: u32 = 0x0010_0000;
-/// Address stride between layers within the register file
-const LAYER_STRIDE: u32 = 0x100;
+#[cfg(feature = "max78000")]
+mod chip {
+    pub const MAX_LAYERS: u8 = 32;
+    /// Processing always starts at layer 0; `LCNT` has no start field.
+    pub const MAX_START_LAYER: u8 = 0;
+    pub const QUADRANT0_BASE: u32 = 0x5010_0000;
+    pub const QUADRANT_STRIDE: u32 = 0x0040_0000;
+    /// The register file is register-major: each [`LayerReg`](super::LayerReg)
+    /// is an array of one word per layer, so layers are 4 bytes apart and the
+    /// register offsets carry the rest.
+    pub const LAYER_BASE: u32 = 0;
+    pub const LAYER_STRIDE: u32 = 4;
+}
+
+#[cfg(feature = "max78002")]
+mod chip {
+    pub const MAX_LAYERS: u8 = 128;
+    pub const MAX_START_LAYER: u8 = MAX_LAYERS - 1;
+    pub const QUADRANT0_BASE: u32 = 0x5100_0000;
+    pub const QUADRANT_STRIDE: u32 = 0x0100_0000;
+    /// The register file is layer-major: one 0x100-byte block per layer.
+    pub const LAYER_BASE: u32 = 0x0010_0000;
+    pub const LAYER_STRIDE: u32 = 0x100;
+}
+
+use chip::{LAYER_BASE, LAYER_STRIDE, QUADRANT0_BASE, QUADRANT_STRIDE};
+pub use chip::{MAX_LAYERS, MAX_START_LAYER};
 
 /// Base address of quadrant `q`
 #[inline]
@@ -59,8 +77,74 @@ impl core::fmt::Debug for Reg {
 
 /// A register within the per-layer register file.
 ///
+/// Values are the offset of layer 0's copy from the quadrant's register file.
+/// See [`fields`](super::fields) for the bitfields at each one.
+#[cfg(feature = "max78000")]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(u32)]
+pub enum LayerReg {
+    Rows = 0x010,
+    Cols = 0x090,
+    /// 1D convolution configuration.
+    Oned = 0x110,
+    /// Pooling rows.
+    PoolRows = 0x190,
+    /// Pooling columns.
+    PoolCols = 0x210,
+    /// Stride.
+    Stride = 0x290,
+    /// SRAM write pointer.
+    Wptr = 0x310,
+    /// Write pointer time slot offset.
+    WptrTs = 0x390,
+    /// Write pointer mask offset.
+    WptrMask = 0x410,
+    /// Write pointer multi-pass channel offset.
+    WptrMp = 0x490,
+    /// SRAM read pointer.
+    Rptr = 0x510,
+    /// Layer control (`LCTRL0`).
+    Lctl = 0x590,
+    /// Mask offset and count.
+    Mcnt = 0x610,
+    /// TRAM pointer maximum.
+    Tptr = 0x690,
+    /// Mask and processor enables.
+    En = 0x710,
+    /// Post processing.
+    Post = 0x790,
+    /// Layer control 2 (`LCTRL1`).
+    Lctl2 = 0xa10,
+}
+
+/// Every layer register, in declaration order.
+/// Note that emit order is different.
+#[cfg(feature = "max78000")]
+pub const ALL_LAYER_REGS: &[LayerReg] = &[
+    LayerReg::Rows,
+    LayerReg::Cols,
+    LayerReg::Oned,
+    LayerReg::PoolRows,
+    LayerReg::PoolCols,
+    LayerReg::Stride,
+    LayerReg::Wptr,
+    LayerReg::WptrTs,
+    LayerReg::WptrMask,
+    LayerReg::WptrMp,
+    LayerReg::Rptr,
+    LayerReg::Lctl,
+    LayerReg::Mcnt,
+    LayerReg::Tptr,
+    LayerReg::En,
+    LayerReg::Post,
+    LayerReg::Lctl2,
+];
+
+/// A register within the per-layer register file.
+///
 /// Values are the byte offset within a layer's 0x100-byte block. See
 /// [`fields`](super::fields) for the bitfields at each one.
+#[cfg(feature = "max78002")]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u32)]
 pub enum LayerReg {
@@ -104,8 +188,9 @@ pub enum LayerReg {
 }
 
 /// Every layer register, in declaration order.
-/// Nte that emit order is differne.t
-pub const ALL_LAYER_REGS: [LayerReg; 20] = [
+/// Note that emit order is different.
+#[cfg(feature = "max78002")]
+pub const ALL_LAYER_REGS: &[LayerReg] = &[
     LayerReg::Next,
     LayerReg::Rows,
     LayerReg::Cols,
@@ -174,7 +259,7 @@ impl LayerRegs {
     /// Decode all registers
     #[inline]
     pub fn dump(self, mut visit: impl FnMut(LayerReg, &dyn core::fmt::Debug)) {
-        for reg in ALL_TYPED_REGS {
+        for &reg in ALL_TYPED_REGS {
             let bits = self.reg(reg).read();
             with_decoded(reg, bits, |value| visit(reg, value));
         }

@@ -7,7 +7,7 @@ This is an [Embedded HAL] (Hardware Abstraction Layer) for the MAX78000 and MAX7
 The HAL is built on top of a Peripheral Access Crate, which provides low-level access to the microcontroller's registers. The HAL provides a higher-level interface to the peripherals, making it easier to write applications.
 
 [Embedded HAL]: https://crates.io/crates/embedded-hal
-[`max78000-pac`]: https://github.com/sigpwny/max78000-pac
+[`max78000-pac`]: https://github.com/aadishv/max78000-pac
 [`max78002-pac`]: https://github.com/vinayak-vikram/max78002-pac
 
 ## Target selection
@@ -22,13 +22,14 @@ chip-specific constants: IPO frequency (100 MHz vs 120 MHz), flash size and
 page size (512 KiB / 8 KiB vs 2.5 MiB / 16 KiB), and the pins available on
 each GPIO port.
 
-## CNN accelerator (MAX78002 only)
+## CNN accelerator
 
-The `cnn` module drives the MAX78002's CNNx16 accelerator: four quadrants of
-sixteen processors, up to 128 layers. It is gated on the `max78002` feature and
-needs a `max78002-pac` with the CNN peripherals (`Cnn`, `Cnnx16_0` through
-`Cnnx16_3`, `Gcfr`), which is why the dependency is pinned to the `main` branch
-of the git repository rather than a crates.io release.
+The `cnn` module drives the CNNx16 accelerator on both parts: four quadrants of
+sixteen processors, up to 32 layers on the MAX78000 and 128 on the MAX78002.
+The API is the same on both; the register layout, memory sizes and the
+MAX78002's pipeline and IPLL clock are selected by the target feature. It needs
+a PAC with the CNN peripherals (`Cnn`, `Cnnx16_0` through `Cnnx16_3`, `Gcfr`),
+which is why both PAC dependencies point at git rather than crates.io releases.
 
 A `Network` is a `const` descriptor — layer register values, weight blobs, and
 where input and output live in data memory. It goes in flash and is read by
@@ -37,7 +38,7 @@ belongs to the network compiler.
 
 ```rust
 let mut cnn = Cnn::new(p.cnn, p.cnnx16_0, p.cnnx16_1, p.cnnx16_2, p.cnnx16_3, p.gcfr)
-    .enable(&mut gcr, CnnClockSource::Ipll(pll), CnnClockDiv::Div1, &mut delay);
+    .enable(&mut gcr, CnnClockSource::Peripheral(pclk), CnnClockDiv::Div1, &mut delay);
 
 NETWORK.validate().unwrap();
 cnn.init(&NETWORK);
@@ -73,7 +74,9 @@ What the hardware will run, on MAX78002:
 
 At most 2048 channels per layer and 128 layers. Batch norm is folded into the
 weights, softmax runs in software, and every channel of every intermediate
-tensor has to fit one 80 KiB data memory instance.
+tensor has to fit one 80 KiB data memory instance. The MAX78000 is smaller:
+32 layers, 1024 channels per layer and 32 KiB instances. Pass
+`--device MAX78000` to every command below and use its `ai85` models.
 
 Run these from the training project:
 
@@ -134,7 +137,8 @@ python3 tools/cnn-gen.py path/to/generated/network --verify
 ```
 
 `--verify` replays the parsed model back into a register poke list and compares
-it against the one in `cnn.c`, byte for byte. Register values are emitted as
+it against the one in `cnn.c`, byte for byte. The device is recognized from the
+addresses in `cnn.c`, and the output only builds with the matching feature. Register values are emitted as
 `from_bits(0x...)` rather than builder chains, so no bit is lost to a field the
 model does not name.
 
@@ -151,20 +155,20 @@ python3 tools/cnn-synth.py -o src/network.rs --prefix kws20 --softmax \
 
 It runs the real generator into a scratch directory and verifies the result the
 same way. Arguments it does not recognize reach `ai8xize.py` untouched. It
-defaults `--device` to MAX78002 and refuses any other device.
+defaults `--device` to MAX78002 and also accepts MAX78000.
 
 ### Memory
 
 Weights and bias live in flash as `static` arrays and are copied into the
 accelerator at startup, so no `memory.x` change is needed — but a large network
-is most of the flash budget. Capacities per part:
+is most of the flash budget. Capacities per part, MAX78000 then MAX78002:
 
 | Memory | Per unit | Units | Total |
 | --- | --- | --- | --- |
-| Kernel | 4096 kernels, 5120 on processor 0 | 64 processors | 2,396,160 B |
-| Bias | 2048 entries | 4 quadrants | 8,192 B |
-| Data SRAM | 5120 words | 16 instances | 327,680 B |
-| TRAM | 12288 words | 64 processors | — |
+| Kernel | 768 / 4096 kernels, 5120 on processor 0 | 64 processors | 442,368 / 2,396,160 B |
+| Bias | 512 / 2048 entries | 4 quadrants | 2,048 / 8,192 B |
+| Data SRAM | 2048 / 5120 words | 64 processors | 524,288 / 1,310,720 B |
+| TRAM | 3072 / 12288 words | 64 processors | — |
 
 Data SRAM holds the input, every intermediate activation and the output at
 once, which is the limit a large input runs into first.
@@ -177,16 +181,14 @@ time the accelerator needs them. `Network::validate` rejects what it can detect
 of an unsupported network and `cnn-gen.py` refuses to parse one; the trait that
 selected between the two is kept, commented out, at the top of `cnn::network`.
 
-MAX78000 is out of scope — its layer register file is register-major with a
-32-layer cap, a different backend rather than a variation.
-
 ### On the register spec
 
 The layer register bitfields are **not** from a vendor document. No Analog
 Devices datasheet or user guide describes them. The field model in
 `cnn::fields` was reverse-engineered from `izer/tornadocnn.py` and
 `izer/backend/max7800x.py` in ai8x-synthesis, then checked against the register
-values in every MAX78002 CNN example shipped with the MSDK.
+values in every MAX78002 CNN example shipped with the MSDK, and on the MAX78000
+against the kws20 and CIFAR-10 examples.
 
 Bit positions are reliable; conditional logic around them is less so. The tests
 in `cnn::golden` replay 4,559 real register writes through the emit path, and

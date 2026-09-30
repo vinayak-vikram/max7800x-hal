@@ -100,7 +100,6 @@ macro_rules! generate_reset {
 
 generate_clock!(Adc, Gcr, pclkdis0, adc);
 generate_clock!(Aes, Gcr, pclkdis1, aes);
-#[cfg(feature = "max78002")]
 generate_clock!(Cnn, Gcr, pclkdis0, cnn);
 // CPU1 (RISC-V core)?
 generate_clock!(Crc, Gcr, pclkdis1, crc);
@@ -135,7 +134,6 @@ generate_clock!(Wdt1, Lpgcr, pclkdis, wdt1);
 // TODO: add system, peripheral, and soft resets
 generate_reset!(Adc, Gcr, rst0, adc);
 generate_reset!(Aes, Gcr, rst1, aes);
-#[cfg(feature = "max78002")]
 generate_reset!(Cnn, Gcr, rst0, cnn);
 // CPU1 (RISC-V core)?
 generate_reset!(Crc, Gcr, rst1, crc);
