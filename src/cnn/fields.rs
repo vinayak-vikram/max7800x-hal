@@ -120,23 +120,18 @@ macro_rules! count_register {
             field!(diff, 16, 16);
             /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
             pub const DECLARED_BITS: u32 = 0xffffe7ff;
-
-            /// Padding on each side
-            #[inline]
-            pub const fn pad(self) -> u32 {
-                if self.pad_ena() {
-                    self.pad_cnt() + 1
-                } else {
-                    0
-                }
-            }
         }
 
         impl core::fmt::Debug for $name {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                let pad = if self.pad_ena() {
+                    self.pad_cnt() + 1
+                } else {
+                    0
+                };
                 f.debug_struct(stringify!($name))
                     .field("cnt", &self.cnt())
-                    .field("pad", &self.pad())
+                    .field("pad", &pad)
                     .field("diff", &self.diff())
                     .finish()
             }

@@ -188,7 +188,7 @@ Devices datasheet or user guide describes them. The field model in
 `cnn::fields` was reverse-engineered from `izer/tornadocnn.py` and
 `izer/backend/max7800x.py` in ai8x-synthesis, then checked against the register
 values in every MAX78002 CNN example shipped with the MSDK, and on the MAX78000
-against the kws20 example.
+against the kws20 and CIFAR-10 examples.
 
 Bit positions are reliable; conditional logic around them is less so. The tests
 in `cnn::golden` replay 4,559 real register writes through the emit path, and
