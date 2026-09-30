@@ -51,11 +51,13 @@ macro_rules! flag {
     };
 }
 
+#[cfg(feature = "max78002")]
 register! {
     /// Next layer
     Nxtlyr
 }
 
+#[cfg(feature = "max78002")]
 impl Nxtlyr {
     field!(next, 0, 7);
     flag!(link_en, 7);
@@ -64,6 +66,7 @@ impl Nxtlyr {
     pub const DECLARED_BITS: u32 = 0x000001ff;
 }
 
+#[cfg(feature = "max78002")]
 impl core::fmt::Debug for Nxtlyr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut s = f.debug_struct("Nxtlyr");
@@ -86,6 +89,28 @@ register! {
     Ccnt
 }
 
+#[cfg(feature = "max78000")]
+macro_rules! count_register {
+    ($name:ident) => {
+        impl $name {
+            field!(cnt, 0, 10);
+            field!(pad, 16, 2);
+            /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+            pub const DECLARED_BITS: u32 = 0x000303ff;
+        }
+
+        impl core::fmt::Debug for $name {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                f.debug_struct(stringify!($name))
+                    .field("cnt", &self.cnt())
+                    .field("pad", &self.pad())
+                    .finish()
+            }
+        }
+    };
+}
+
+#[cfg(feature = "max78002")]
 macro_rules! count_register {
     ($name:ident) => {
         impl $name {
@@ -131,17 +156,22 @@ macro_rules! pool_register {
     ($name:ident) => {
         impl $name {
             field!(pool_cnt, 0, 4);
+            #[cfg(feature = "max78002")]
             field!(pool_inc, 4, 4);
             /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+            #[cfg(feature = "max78000")]
+            pub const DECLARED_BITS: u32 = 0x0000000f;
+            #[cfg(feature = "max78002")]
             pub const DECLARED_BITS: u32 = 0x000000ff;
         }
 
         impl core::fmt::Debug for $name {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                f.debug_struct(stringify!($name))
-                    .field("pool_cnt", &self.pool_cnt())
-                    .field("pool_inc", &self.pool_inc())
-                    .finish()
+                let mut s = f.debug_struct(stringify!($name));
+                s.field("pool_cnt", &self.pool_cnt());
+                #[cfg(feature = "max78002")]
+                s.field("pool_inc", &self.pool_inc());
+                s.finish()
             }
         }
     };
@@ -155,6 +185,14 @@ register! {
     Stride
 }
 
+#[cfg(feature = "max78000")]
+impl Stride {
+    field!(stride, 0, 2);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0x00000003;
+}
+
+#[cfg(feature = "max78002")]
 impl Stride {
     field!(stride, 0, 4);
     field!(mp_stride, 4, 28);
@@ -164,10 +202,11 @@ impl Stride {
 
 impl core::fmt::Debug for Stride {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Stride")
-            .field("stride", &self.stride())
-            .field("mp_stride", &self.mp_stride())
-            .finish()
+        let mut s = f.debug_struct("Stride");
+        s.field("stride", &self.stride());
+        #[cfg(feature = "max78002")]
+        s.field("mp_stride", &self.mp_stride());
+        s.finish()
     }
 }
 
@@ -179,8 +218,14 @@ register! {
 impl WptrBase {
     field!(offset, 0, 13);
     field!(instance, 13, 2);
+    #[cfg(feature = "max78000")]
+    field!(group, 15, 2);
+    #[cfg(feature = "max78002")]
     field!(group, 15, 6);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    #[cfg(feature = "max78000")]
+    pub const DECLARED_BITS: u32 = 0x0001ffff;
+    #[cfg(feature = "max78002")]
     pub const DECLARED_BITS: u32 = 0x001fffff;
 }
 
@@ -200,13 +245,17 @@ macro_rules! value_register {
         register! { $(#[$attr])* $name }
 
         impl $name {
+            /// A 17-bit pointer; everything above is reserved
+            #[cfg(feature = "max78000")]
+            pub const DECLARED_BITS: u32 = 0x0001ffff;
             /// The whole word is one value, so no bit is reserved
+            #[cfg(feature = "max78002")]
             pub const DECLARED_BITS: u32 = u32::MAX;
         }
 
         impl core::fmt::Debug for $name {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                write!(f, "{}({:#x})", stringify!($name), self.0)
+                write!(f, "{}({:#x})", stringify!($name), self.0 & Self::DECLARED_BITS)
             }
         }
     };
@@ -246,13 +295,22 @@ impl Lctl {
     flag!(global_wptr, 11);
     field!(siena, 12, 4);
     flag!(wide_out, 16);
+    #[cfg(feature = "max78002")]
     flag!(rd_ahead, 17);
+    #[cfg(feature = "max78002")]
     field!(cprime_max, 18, 4);
+    #[cfg(feature = "max78002")]
     field!(rprime_max, 22, 4);
+    #[cfg(feature = "max78002")]
     field!(shift_cnt, 26, 4);
+    #[cfg(feature = "max78002")]
     flag!(dw_bcast, 29);
+    #[cfg(feature = "max78002")]
     flag!(bypass, 30);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    #[cfg(feature = "max78000")]
+    pub const DECLARED_BITS: u32 = 0x0001fbe0;
+    #[cfg(feature = "max78002")]
     pub const DECLARED_BITS: u32 = 0x7ffffbe0;
 }
 
@@ -266,15 +324,19 @@ impl core::fmt::Debug for Lctl {
             .field("relu", &self.relu())
             .field("global_wptr", &self.global_wptr())
             .field("siena", &self.siena())
-            .field("wide_out", &self.wide_out())
-            .field("rd_ahead", &self.rd_ahead())
-            .field("kernel", &(self.rprime_max() + 1, self.cprime_max() + 1));
-        if self.rd_ahead() {
-            s.field("shift_cnt", &self.shift_cnt());
-        } else {
-            s.field("dw_bcast", &self.dw_bcast());
+            .field("wide_out", &self.wide_out());
+        #[cfg(feature = "max78002")]
+        {
+            s.field("rd_ahead", &self.rd_ahead())
+                .field("kernel", &(self.rprime_max() + 1, self.cprime_max() + 1));
+            if self.rd_ahead() {
+                s.field("shift_cnt", &self.shift_cnt());
+            } else {
+                s.field("dw_bcast", &self.dw_bcast());
+            }
+            s.field("bypass", &self.bypass());
         }
-        s.field("bypass", &self.bypass()).finish()
+        s.finish()
     }
 }
 
@@ -283,6 +345,16 @@ register! {
     Lctl2
 }
 
+#[cfg(feature = "max78000")]
+impl Lctl2 {
+    field!(maxpass, 0, 4);
+    field!(wptr_inc, 4, 4);
+    field!(xpch_max, 8, 9);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0x0001ffff;
+}
+
+#[cfg(feature = "max78002")]
 impl Lctl2 {
     field!(maxpass, 0, 4);
     field!(wptr_inc, 4, 8);
@@ -336,18 +408,21 @@ impl core::fmt::Debug for Oned {
     }
 }
 
+#[cfg(feature = "max78002")]
 register! {
     /// Last mask memory word
     /// Not written for passthrough layers
     Mcnt1
 }
 
+#[cfg(feature = "max78002")]
 impl Mcnt1 {
     field!(mexp_max, 0, 19);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0x0007ffff;
 }
 
+#[cfg(feature = "max78002")]
 impl core::fmt::Debug for Mcnt1 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Mcnt1")
@@ -356,17 +431,20 @@ impl core::fmt::Debug for Mcnt1 {
     }
 }
 
+#[cfg(feature = "max78002")]
 register! {
     /// First mask memory word
     Mcnt2
 }
 
+#[cfg(feature = "max78002")]
 impl Mcnt2 {
     field!(mexp_sad, 0, 19);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0x0007ffff;
 }
 
+#[cfg(feature = "max78002")]
 impl core::fmt::Debug for Mcnt2 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Mcnt2")
@@ -375,17 +453,44 @@ impl core::fmt::Debug for Mcnt2 {
     }
 }
 
+#[cfg(feature = "max78000")]
+register! {
+    /// First and last mask memory word
+    Mcnt
+}
+
+#[cfg(feature = "max78000")]
+impl Mcnt {
+    field!(mcnt_max, 0, 16);
+    field!(mcnt_sad, 16, 16);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0xffffffff;
+}
+
+#[cfg(feature = "max78000")]
+impl core::fmt::Debug for Mcnt {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Mcnt")
+            .field("mcnt_sad", &self.mcnt_sad())
+            .field("mcnt_max", &self.mcnt_max())
+            .finish()
+    }
+}
+
+#[cfg(feature = "max78002")]
 register! {
     /// Output channel count minus one
     Ochan
 }
 
+#[cfg(feature = "max78002")]
 impl Ochan {
     field!(ochan, 0, 32);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
     pub const DECLARED_BITS: u32 = 0xffffffff;
 }
 
+#[cfg(feature = "max78002")]
 impl core::fmt::Debug for Ochan {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Ochan")
@@ -399,6 +504,15 @@ register! {
     Tptr
 }
 
+#[cfg(feature = "max78000")]
+impl Tptr {
+    field!(tptr_max, 0, 11);
+    field!(tptr_sad, 16, 11);
+    /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    pub const DECLARED_BITS: u32 = 0x07ff07ff;
+}
+
+#[cfg(feature = "max78002")]
 impl Tptr {
     field!(tptr_max, 0, 16);
     field!(tptr_sad, 16, 16);
@@ -453,10 +567,16 @@ impl Post {
     flag!(act_abs, 26);
     flag!(flatten_ena, 27);
     flag!(xpose_ena, 28);
+    #[cfg(feature = "max78002")]
     flag!(calcx4, 29);
+    #[cfg(feature = "max78002")]
     flag!(dw_ena, 30);
+    #[cfg(feature = "max78002")]
     flag!(tcalc, 31);
     /// Bits covered by a field above; pinned by `declared_bits_match_the_getters`
+    #[cfg(feature = "max78000")]
+    pub const DECLARED_BITS: u32 = 0x1fffffff;
+    #[cfg(feature = "max78002")]
     pub const DECLARED_BITS: u32 = 0xffffffff;
 
     #[inline]
@@ -487,8 +607,8 @@ impl Post {
 
 impl core::fmt::Debug for Post {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Post")
-            .field("bias_addr", &self.bias_addr())
+        let mut s = f.debug_struct("Post");
+        s.field("bias_addr", &self.bias_addr())
             .field("bias_en", &self.bias_en())
             .field("output_shift", &self.output_shift())
             .field("xpmp_cnt", &self.xpmp_cnt())
@@ -497,11 +617,12 @@ impl core::fmt::Debug for Post {
             .field("onexone_ena", &self.onexone_ena())
             .field("act_abs", &self.act_abs())
             .field("flatten_ena", &self.flatten_ena())
-            .field("xpose_ena", &self.xpose_ena())
-            .field("calcx4", &self.calcx4())
+            .field("xpose_ena", &self.xpose_ena());
+        #[cfg(feature = "max78002")]
+        s.field("calcx4", &self.calcx4())
             .field("dw_ena", &self.dw_ena())
-            .field("tcalc", &self.tcalc())
-            .finish()
+            .field("tcalc", &self.tcalc());
+        s.finish()
     }
 }
 
@@ -623,8 +744,9 @@ pub trait LayerRegister: Copy + core::fmt::Debug {
 }
 
 macro_rules! layer_registers {
-    ($($ty:ident => $reg:ident),* $(,)?) => {
+    ($($(#[$m:meta])* $ty:ident => $reg:ident),* $(,)?) => {
         $(
+            $(#[$m])*
             impl LayerRegister for $ty {
                 const REG: LayerReg = LayerReg::$reg;
                 const DECLARED: u32 = $ty::DECLARED_BITS;
@@ -642,12 +764,12 @@ macro_rules! layer_registers {
         )*
 
         /// Every register that has a value type, in emit order.
-        pub const ALL_TYPED_REGS: [LayerReg; 20] = [$(LayerReg::$reg),*];
+        pub const ALL_TYPED_REGS: &[LayerReg] = &[$($(#[$m])* LayerReg::$reg),*];
 
         /// Set bits of `bits` that belong to no field of `reg`
         pub fn reserved_bits(reg: LayerReg, bits: u32) -> u32 {
             match reg {
-                $(LayerReg::$reg => $ty::from_bits(bits).reserved()),*
+                $($(#[$m])* LayerReg::$reg => $ty::from_bits(bits).reserved()),*
             }
         }
 
@@ -658,13 +780,14 @@ macro_rules! layer_registers {
             f: impl FnOnce(&dyn core::fmt::Debug) -> T,
         ) -> T {
             match reg {
-                $(LayerReg::$reg => f(&$ty(bits))),*
+                $($(#[$m])* LayerReg::$reg => f(&$ty(bits))),*
             }
         }
     };
 }
 
 layer_registers! {
+    #[cfg(feature = "max78002")]
     Nxtlyr => Next,
     Rcnt => Rows,
     Ccnt => Cols,
@@ -678,8 +801,13 @@ layer_registers! {
     RptrBase => Rptr,
     Lctl => Lctl,
     Lctl2 => Lctl2,
+    #[cfg(feature = "max78000")]
+    Mcnt => Mcnt,
+    #[cfg(feature = "max78002")]
     Mcnt1 => Mcnt,
+    #[cfg(feature = "max78002")]
     Mcnt2 => Moffs,
+    #[cfg(feature = "max78002")]
     Ochan => Ochan,
     Oned => Oned,
     Tptr => Tptr,

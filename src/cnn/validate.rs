@@ -5,14 +5,17 @@ use super::fields::reserved_bits;
 use super::memory::{bias_fits, kernel_burst_fits, DATA_WINDOW_BYTES};
 use super::network::{Layer, Network};
 use super::regs::LayerReg;
-use super::regs::{DATA_INSTANCES_PER_QUADRANT, MAX_LAYERS, PROCESSORS_PER_QUADRANT, QUADRANTS};
+use super::regs::{
+    DATA_INSTANCES_PER_QUADRANT, MAX_LAYERS, MAX_START_LAYER, PROCESSORS_PER_QUADRANT, QUADRANTS,
+};
 
 /// Why a network cannot be programmed
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Invalid {
     /// More layers than the register file holds
     TooManyLayers { layers: usize },
-    /// `first_layer`/`last_layer` do not index the layer table
+    /// `first_layer`/`last_layer` do not index the layer table, or the
+    /// hardware cannot start at `first_layer`
     LayerRange { first: u8, last: u8, layers: usize },
     /// A weight region names a quadrant or processor that does not exist
     WeightTarget { region: usize },
@@ -29,6 +32,7 @@ pub enum Invalid {
     /// `SIENA` is set outside the master quadrant, or names the master itself
     SourceEnables { layer: u8, quadrant: u8 },
     /// `SHIFT_CNT` has spilled into the bit `DW_BCAST` occupies
+    #[cfg(feature = "max78002")]
     ShiftCountCollision { layer: u8, quadrant: u8 },
     /// A register has bits set that belong to no field
     ReservedBits {
@@ -54,7 +58,10 @@ impl Network<'_> {
         if layers > MAX_LAYERS as usize {
             return Err(Invalid::TooManyLayers { layers });
         }
-        if self.first_layer > self.last_layer || self.last_layer as usize >= layers.max(1) {
+        if self.first_layer > self.last_layer
+            || self.first_layer > MAX_START_LAYER
+            || self.last_layer as usize >= layers.max(1)
+        {
             return Err(Invalid::LayerRange {
                 first: self.first_layer,
                 last: self.last_layer,
@@ -114,11 +121,7 @@ impl Network<'_> {
         for (index, layer) in self.layers.iter().enumerate() {
             let index = index as u8;
             for q in 0..QUADRANTS {
-                let (lctl, post, ena) = (
-                    layer.lctl[q as usize],
-                    layer.post[q as usize],
-                    layer.ena[q as usize],
-                );
+                let (lctl, ena) = (layer.lctl[q as usize], layer.ena[q as usize]);
 
                 let mask = ena.mask_ena();
                 if mask != 0 && mask != ena.proc_ena() {
@@ -140,7 +143,8 @@ impl Network<'_> {
                 // Spec 8.4: with tcalc clear the field holds in_expand - 1, and
                 // a value >= 8 sets bit 29 on its own, which the hardware reads
                 // as DW_BCAST.
-                if lctl.rd_ahead() && !post.tcalc() && lctl.shift_cnt() >= 8 {
+                #[cfg(feature = "max78002")]
+                if lctl.rd_ahead() && !layer.post[q as usize].tcalc() && lctl.shift_cnt() >= 8 {
                     return Err(Invalid::ShiftCountCollision {
                         layer: index,
                         quadrant: q,

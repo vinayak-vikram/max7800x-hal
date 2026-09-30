@@ -1,9 +1,13 @@
 //! Full network descriptor
 
+#[cfg(feature = "max78000")]
+use super::fields::Mcnt;
 use super::fields::{
-    Ccnt, Ena, Lctl, Lctl2, Mcnt1, Mcnt2, Nxtlyr, Ochan, Oned, Pccnt, Post, Prcnt, Rcnt, RptrBase,
-    Stride, Tptr, WptrBase, WptrChoffs, WptrMoffs, WptrToffs,
+    Ccnt, Ena, Lctl, Lctl2, Oned, Pccnt, Post, Prcnt, Rcnt, RptrBase, Stride, Tptr, WptrBase,
+    WptrChoffs, WptrMoffs, WptrToffs,
 };
+#[cfg(feature = "max78002")]
+use super::fields::{Mcnt1, Mcnt2, Nxtlyr, Ochan};
 use super::regs::QUADRANTS;
 
 // The accelerator can also take its input through a FIFO, which is what
@@ -14,7 +18,8 @@ use super::regs::QUADRANTS;
 // FIFO values against `mobilefacenet-112`. An earlier revision of the register
 // spec had bit 0 inverted, which hangs the accelerator.
 //
-// They assume the configuration every shipped network uses: pipeline enabled,
+// They assume the configuration every shipped network uses: pipeline enabled
+// (MAX78002 only; the bit is absent on the MAX78000),
 // memory-express weight loading, ready-select 0, quadrant 0 as master, and no
 // snoop, one-shot or fast FIFO.
 //
@@ -52,6 +57,7 @@ use super::regs::QUADRANTS;
 /// One hardware layer.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct Layer {
+    #[cfg(feature = "max78002")]
     pub next: Nxtlyr,
     pub rows: Rcnt,
     pub cols: Ccnt,
@@ -64,8 +70,13 @@ pub struct Layer {
     pub wptr_choffs: WptrChoffs,
     pub rptr: RptrBase,
     pub lctl2: Lctl2,
+    #[cfg(feature = "max78000")]
+    pub mcnt: Mcnt,
+    #[cfg(feature = "max78002")]
     pub mcnt1: Option<Mcnt1>,
+    #[cfg(feature = "max78002")]
     pub mcnt2: Mcnt2,
+    #[cfg(feature = "max78002")]
     pub ochan: Ochan,
     pub tptr: Tptr,
 
@@ -82,6 +93,7 @@ impl Layer {
     /// A layer that configures nothing, for `..Layer::new()` in a `const`
     pub const fn new() -> Self {
         Self {
+            #[cfg(feature = "max78002")]
             next: Nxtlyr::new(),
             rows: Rcnt::new(),
             cols: Ccnt::new(),
@@ -94,8 +106,13 @@ impl Layer {
             wptr_choffs: WptrChoffs::new(),
             rptr: RptrBase::new(),
             lctl2: Lctl2::new(),
+            #[cfg(feature = "max78000")]
+            mcnt: Mcnt::new(),
+            #[cfg(feature = "max78002")]
             mcnt1: None,
+            #[cfg(feature = "max78002")]
             mcnt2: Mcnt2::new(),
+            #[cfg(feature = "max78002")]
             ochan: Ochan::new(),
             tptr: Tptr::new(),
             lctl: [Lctl::new(); QUADRANTS as usize],

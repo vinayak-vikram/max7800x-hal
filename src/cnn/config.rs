@@ -37,6 +37,7 @@ fn emit<R: LayerRegister>(sink: &mut impl LayerSink, value: R) {
 pub fn emit_layer(sink: &mut impl LayerSink, layer: &Layer, quadrant: u8) {
     let q = quadrant as usize;
 
+    #[cfg(feature = "max78002")]
     emit(sink, layer.next);
     emit(sink, layer.rows);
     emit(sink, layer.cols);
@@ -52,11 +53,16 @@ pub fn emit_layer(sink: &mut impl LayerSink, layer: &Layer, quadrant: u8) {
     emit(sink, layer.rptr);
     emit(sink, layer.lctl[q]);
     emit(sink, layer.lctl2);
-    if let Some(mcnt1) = layer.mcnt1 {
-        emit(sink, mcnt1);
+    #[cfg(feature = "max78000")]
+    emit(sink, layer.mcnt);
+    #[cfg(feature = "max78002")]
+    {
+        if let Some(mcnt1) = layer.mcnt1 {
+            emit(sink, mcnt1);
+        }
+        emit(sink, layer.mcnt2);
+        emit(sink, layer.ochan);
     }
-    emit(sink, layer.mcnt2);
-    emit(sink, layer.ochan);
     emit(sink, layer.oned);
     emit(sink, layer.tptr);
     emit(sink, layer.post[q]);

@@ -11,8 +11,8 @@ The register values are izer's own; nothing here computes one.
 
 Every unrecognized argument is passed to `ai8xize.py` untouched, so anything
 that changes what it emits - `--start-layer`, `--mlator`, `--no-unload`,
-`--boost` - works as it does there. `--device` defaults to MAX78002 and no
-other device is accepted; the HAL is ai87 only. `--test-dir` defaults to a
+`--boost` - works as it does there. `--device` defaults to MAX78002; MAX78000
+is the only other device accepted. `--test-dir` defaults to a
 temporary directory that is removed on the way out, and `--no-version-check`
 is added so a run needs no network.
 
@@ -106,8 +106,8 @@ def defaults(args, test_dir, prefix):
     device = option(args, "--device")
     if device is None:
         args += ["--device", "MAX78002"]
-    elif device.upper().removeprefix("MAX") not in ("78002", "AI87", "87"):
-        sys.exit(f"--device {device} is not supported; this HAL is MAX78002 only")
+    elif device.upper().removeprefix("MAX") not in ("78000", "AI85", "85", "78002", "AI87", "87"):
+        sys.exit(f"--device {device} is not supported; use MAX78000 or MAX78002")
     if option(args, "--test-dir") is None:
         args += ["--test-dir", str(test_dir)]
     if option(args, "--prefix") is None:
@@ -181,7 +181,7 @@ def main():
             print(text, end="")
             return 0
         args.output.write_text(text)
-        print(f"wrote {args.output} ({len(model.layers)} layers)")
+        print(f"wrote {args.output} ({model.device.name}, {len(model.layers)} layers)")
         return 0
     finally:
         shutil.rmtree(scratch, ignore_errors=True)

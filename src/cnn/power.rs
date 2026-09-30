@@ -1,21 +1,26 @@
 //! Power domain and clocking
 
-use super::{Cnn, CnnState};
-use crate::gcr::clocks::{Clock, Disabled, Enabled, InternalPll, PeripheralClock};
+use super::Cnn;
+#[cfg(feature = "max78002")]
+use crate::gcr::clocks::InternalPll;
+use crate::gcr::clocks::{Clock, Disabled, Enabled, PeripheralClock};
 use crate::gcr::{ClockForPeripheral, GcrRegisters};
 use core::marker::PhantomData;
 use embedded_hal::delay::DelayNs;
 
 /// Highest clock frequency the accelerator supports, with the datapath pipeline enabled
+#[cfg(feature = "max78002")]
 pub const MAX_PIPELINED_FREQUENCY: u32 = 200_000_000;
 
 /// Highest clock frequency the accelerator supports with the pipeline disabled
+#[cfg(feature = "max78002")]
 pub const MAX_NON_PIPELINED_FREQUENCY: u32 = 50_000_000;
 
 /// Settling time for the CNN power-domain load switches, in milliseconds
 pub const LOAD_SWITCH_SETTLE_MS: u32 = 10;
 
 /// Whether the accelerator datapath pipeline is enabled
+#[cfg(feature = "max78002")]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum Pipeline {
     #[default]
@@ -23,6 +28,7 @@ pub enum Pipeline {
     Disabled,
 }
 
+#[cfg(feature = "max78002")]
 impl Pipeline {
     pub const fn ctl_bits(self) -> u32 {
         match self {
@@ -37,6 +43,7 @@ impl Pipeline {
 pub enum CnnClockSource {
     Peripheral(Clock<PeripheralClock>),
     Iso,
+    #[cfg(feature = "max78002")]
     Ipll(Clock<InternalPll>),
 }
 
@@ -46,6 +53,7 @@ impl CnnClockSource {
         match self {
             Self::Peripheral(clock) => clock.frequency,
             Self::Iso => 60_000_000,
+            #[cfg(feature = "max78002")]
             Self::Ipll(_) => InternalPll::CNN_FREQUENCY,
         }
     }
@@ -106,6 +114,7 @@ impl Cnn<Disabled> {
             q2,
             q3,
             gcfr,
+            #[cfg(feature = "max78002")]
             pipeline: Pipeline::Enabled,
             source: None,
             divider: CnnClockDiv::default(),
@@ -114,6 +123,7 @@ impl Cnn<Disabled> {
     }
 
     /// Disable the datapath pipeline, cap clock frequency
+    #[cfg(feature = "max78002")]
     pub fn with_pipeline(mut self, mode: Pipeline) -> Self {
         self.pipeline = mode;
         self
@@ -127,8 +137,8 @@ impl Cnn<Disabled> {
         divider: CnnClockDiv,
         delay: &mut impl DelayNs,
     ) -> Cnn<Enabled> {
-        let frequency = source.frequency() / divider.divisor();
-        debug_assert_frequency(self.pipeline, frequency);
+        #[cfg(feature = "max78002")]
+        debug_assert_frequency(self.pipeline, source.frequency() / divider.divisor());
 
         self.gcfr.reg3().modify(|_, w| {
             all_quadrants!(
@@ -184,6 +194,7 @@ impl Cnn<Disabled> {
             )
         });
 
+        #[cfg(feature = "max78002")]
         if matches!(source, CnnClockSource::Ipll(_)) {
             while reg.gcr.ipll_ctrl().read().rdy().bit_is_clear() {}
         }
@@ -200,6 +211,7 @@ impl Cnn<Disabled> {
             q2: self.q2,
             q3: self.q3,
             gcfr: self.gcfr,
+            #[cfg(feature = "max78002")]
             pipeline: self.pipeline,
             source: Some(source),
             divider,
@@ -228,6 +240,7 @@ impl Cnn<Enabled> {
     /// Change the clock divider without repeating the power-up sequence
     pub fn set_divider(&mut self, reg: &mut GcrRegisters, divider: CnnClockDiv) {
         let source = self.source();
+        #[cfg(feature = "max78002")]
         debug_assert_frequency(self.pipeline, source.frequency() / divider.divisor());
         write_clock(reg, source, divider);
         self.divider = divider;
@@ -297,6 +310,7 @@ impl Cnn<Enabled> {
             q2: self.q2,
             q3: self.q3,
             gcfr: self.gcfr,
+            #[cfg(feature = "max78002")]
             pipeline: self.pipeline,
             source: None,
             divider: self.divider,
@@ -305,7 +319,8 @@ impl Cnn<Enabled> {
     }
 }
 
-impl<S: CnnState> Cnn<S> {
+#[cfg(feature = "max78002")]
+impl<S: super::CnnState> Cnn<S> {
     /// Retain the accelerator's contents across UPM, STANDBY and BACKUP
     pub fn set_retention(&mut self, enable: bool) {
         self.gcfr.reg2().modify(|_, w| {
@@ -342,11 +357,13 @@ fn write_clock(reg: &mut GcrRegisters, source: CnnClockSource, divider: CnnClock
         match source {
             CnnClockSource::Peripheral(_) => w.cnnclksel().pclk(),
             CnnClockSource::Iso => w.cnnclksel().iso(),
+            #[cfg(feature = "max78002")]
             CnnClockSource::Ipll(_) => w.cnnclksel().ipll(),
         }
     });
 }
 
+#[cfg(feature = "max78002")]
 #[inline]
 fn debug_assert_frequency(pipeline: Pipeline, frequency: u32) {
     debug_assert!(

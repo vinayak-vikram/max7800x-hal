@@ -54,7 +54,7 @@ fn layer_registers() {
 #[test]
 fn layer_reg_offsets_are_unique_and_ordered() {
     let mut seen = [false; 0x50];
-    for r in ALL_LAYER_REGS {
+    for &r in ALL_LAYER_REGS {
         let off = r as usize;
         assert!(off < 0x50 && off % 4 == 0, "bad offset {off:#x}");
         assert!(!seen[off], "duplicate offset {off:#x}");
@@ -439,7 +439,7 @@ fn every_type_maps_to_its_own_slot() {
 #[test]
 fn typed_registers_cover_every_slot_once() {
     assert_eq!(ALL_TYPED_REGS.len(), crate::cnn::regs::ALL_LAYER_REGS.len());
-    for expected in crate::cnn::regs::ALL_LAYER_REGS {
+    for &expected in crate::cnn::regs::ALL_LAYER_REGS {
         let count = ALL_TYPED_REGS.iter().filter(|r| **r == expected).count();
         assert_eq!(count, 1, "{expected:?} has {count} value types");
     }
@@ -456,7 +456,7 @@ fn typed_registers_cover_every_slot_once() {
 /// `link_en` is set, so probing up from zero alone would miss it.
 #[test]
 fn declared_bits_match_the_getters() {
-    for reg in ALL_TYPED_REGS {
+    for &reg in ALL_TYPED_REGS {
         let (zero, ones) = (rendered(reg, 0), rendered(reg, u32::MAX));
         for bit in 0..32 {
             let up = rendered(reg, 1 << bit);
@@ -553,7 +553,7 @@ fn rendered(reg: LayerReg, bits: u32) -> Buf {
 #[test]
 fn decoder_visits_every_register() {
     let mut visited = 0;
-    for reg in crate::cnn::regs::ALL_LAYER_REGS {
+    for &reg in crate::cnn::regs::ALL_LAYER_REGS {
         with_decoded(reg, 0, |_| visited += 1);
     }
     assert_eq!(visited, 20);
@@ -1398,10 +1398,10 @@ fn active_low_inverts_both_directions() {
 
 // ---------------------------------------------------------------- golden corpus
 /// `kws20_demo`: 9 layers, no bias, conv1d
-const KWS20: &str = include_str!("golden/kws20_demo.txt");
+const KWS20: &str = include_str!("golden/max78002/kws20_demo.txt");
 
 /// `cifar-100-mobilenet-v2-0.75`: 73 layers, bias
-const CIFAR100: &str = include_str!("golden/cifar100_mobilenet_v2.txt");
+const CIFAR100: &str = include_str!("golden/max78002/cifar100_mobilenet_v2.txt");
 
 /// One `// Layer n quadrant q` block, as the generator emitted it
 #[derive(Clone, Copy)]
