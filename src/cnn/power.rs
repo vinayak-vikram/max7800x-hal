@@ -209,30 +209,6 @@ impl Cnn<Disabled> {
 }
 
 impl Cnn<Enabled> {
-    /// The accelerator as another image (e.g. firmware loading an app) left
-    /// it after [`Cnn::enable`], with the pipeline enabled. The clock source
-    /// is unknown, so [`Cnn::frequency`] reads zero.
-    ///
-    /// # Safety
-    ///
-    /// The accelerator must be enabled, and nothing else may drive it.
-    pub unsafe fn steal() -> Self {
-        unsafe {
-            Self {
-                cnn: crate::pac::Cnn::steal(),
-                q0: crate::pac::Cnnx16_0::steal(),
-                q1: crate::pac::Cnnx16_1::steal(),
-                q2: crate::pac::Cnnx16_2::steal(),
-                q3: crate::pac::Cnnx16_3::steal(),
-                gcfr: crate::pac::Gcfr::steal(),
-                pipeline: Pipeline::Enabled,
-                source: None,
-                divider: CnnClockDiv::default(),
-                _state: PhantomData,
-            }
-        }
-    }
-
     /// The accelerator clock frequency, after the divider
     pub const fn frequency(&self) -> u32 {
         match self.source {
