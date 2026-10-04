@@ -237,6 +237,7 @@ impl Cnn<Enabled> {
                 q2: crate::pac::Cnnx16_2::steal(),
                 q3: crate::pac::Cnnx16_3::steal(),
                 gcfr: crate::pac::Gcfr::steal(),
+                #[cfg(feature = "max78002")]
                 pipeline: Pipeline::Enabled,
                 source: None,
                 divider: CnnClockDiv::default(),
@@ -244,7 +245,7 @@ impl Cnn<Enabled> {
             }
         }
     }
-    
+
     /// The accelerator clock frequency, after the divider
     pub const fn frequency(&self) -> u32 {
         match self.source {
